@@ -8,11 +8,11 @@ import { MessageSquare, Search, User, Wallet, LogOut, Bell, Edit2, Sparkles } fr
 export default function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
-  const [activeTab, setActiveTab] = useState('chat'); // Default to chat
+  const [activeTab, setActiveTab] = useState('chat');
   
   // Chat List States
   const [conversations, setConversations] = useState([]);
-  const [chatFilter, setChatFilter] = useState('all'); // 'all', 'unread', 'read'
+  const [chatFilter, setChatFilter] = useState('all');
   const [chatSearch, setChatSearch] = useState('');
   const [directUsername, setDirectUsername] = useState('');
   const [selectedChatUser, setSelectedChatUser] = useState(null);
@@ -51,24 +51,17 @@ export default function App() {
     if (data) setProfile(data);
   };
 
-    const fetchRecentConversations = async (userId) => {
-    // 1. Fetch all messages involving the current user
+  const fetchRecentConversations = async (userId) => {
     const { data: msgs, error } = await supabase
       .from('messages')
       .select('*')
       .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
       .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error('Error fetching messages:', error);
-      return;
-    }
+    if (error) return;
 
     if (msgs && msgs.length > 0) {
-      // Collect unique user IDs of people we chatted with
       const otherUserIds = [...new Set(msgs.map(m => m.sender_id === userId ? m.receiver_id : m.sender_id))];
-
-      // 2. Fetch profiles for those users
       const { data: profilesData } = await supabase
         .from('profiles')
         .select('id, username, gender_avatar')
@@ -79,7 +72,6 @@ export default function App() {
         profilesData.forEach(p => profileMap.set(p.id, p));
       }
 
-      // 3. Map into distinct conversations
       const map = new Map();
       msgs.forEach((m) => {
         const otherId = m.sender_id === userId ? m.receiver_id : m.sender_id;
@@ -101,7 +93,6 @@ export default function App() {
       setConversations([]);
     }
   };
-
 
   const handleStartDirectChat = async () => {
     if (!directUsername.trim()) return;
@@ -137,7 +128,7 @@ export default function App() {
 
     try {
       await logUserInterest(session.user.id, logInput.trim());
-      setStatusMessage('Log saved! Visible to AI matchmakers.');
+      setStatusMessage('Log saved!');
       setStatusType('success');
       setLogInput('');
     } catch (err) {
@@ -174,26 +165,30 @@ export default function App() {
     return matchesSearch;
   });
 
+  const inChatRoom = activeTab === 'chat' && selectedChatUser !== null;
+
   return (
-    <div className="flex flex-col w-full min-h-screen bg-slate-900 text-slate-100 font-sans">
+    <div className="flex flex-col w-full h-screen bg-slate-900 text-slate-100 font-sans overflow-hidden">
       {!session && <AuthModal onAuthSuccess={(user) => fetchProfile(user.id)} />}
 
-      {/* Main Header */}
-      <header className="p-4 bg-slate-800 border-b border-slate-700 flex justify-between items-center sticky top-0 z-10 shadow-md">
-        <div>
-          <h1 className="font-bold text-emerald-400 text-base tracking-wide">GINGOMART</h1>
-          <p className="text-[11px] text-slate-400">{profile ? `@${profile.username}` : 'P2P Marketplace'}</p>
-        </div>
-        <div className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/30 px-3 py-1.5 rounded-full">
-          <Wallet className="w-4 h-4 text-amber-400" />
-          <span className="text-xs font-bold text-amber-400">
-            {profile ? Number(profile.gmart_balance).toFixed(2) : '0.00'} GMART
-          </span>
-        </div>
-      </header>
+      {/* 1. HIDE TOP HEADER WHEN IN CHAT */}
+      {!inChatRoom && (
+        <header className="p-4 bg-slate-800 border-b border-slate-700 flex justify-between items-center sticky top-0 z-10 shadow-md shrink-0">
+          <div>
+            <h1 className="font-bold text-emerald-400 text-base tracking-wide">GINGOMART</h1>
+            <p className="text-[11px] text-slate-400">{profile ? `@${profile.username}` : 'P2P Marketplace'}</p>
+          </div>
+          <div className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/30 px-3 py-1.5 rounded-full">
+            <Wallet className="w-4 h-4 text-amber-400" />
+            <span className="text-xs font-bold text-amber-400">
+              {profile ? Number(profile.gmart_balance).toFixed(2) : '0.00'} GMART
+            </span>
+          </div>
+        </header>
+      )}
 
-      {/* Body View */}
-      <main className="flex-1 p-3 max-w-xl mx-auto w-full pb-24 overflow-y-auto">
+      {/* 2. BODY CONTENT */}
+      <main className="flex-1 w-full max-w-xl mx-auto overflow-hidden relative flex flex-col">
         {activeTab === 'chat' && (
           selectedChatUser ? (
             <ChatRoom
@@ -205,8 +200,7 @@ export default function App() {
               }}
             />
           ) : (
-            <div className="space-y-4">
-              {/* Header Title Bar */}
+            <div className="p-3 space-y-4 overflow-y-auto pb-24">
               <div className="flex justify-between items-center">
                 <h2 className="text-xl font-black text-slate-100">Messages</h2>
                 <div className="relative">
@@ -219,13 +213,11 @@ export default function App() {
                 </div>
               </div>
 
-              {/* Notification Banner */}
               <div className="bg-blue-500/10 border border-blue-500/30 p-3 rounded-2xl flex justify-between items-center text-xs">
                 <span className="text-blue-300">🔔 Get notified when friends message you</span>
                 <button className="text-blue-400 font-bold hover:underline">Turn on</button>
               </div>
 
-              {/* Message someone input */}
               <div className="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-2xl px-3 py-2">
                 <Edit2 className="w-4 h-4 text-slate-400 shrink-0" />
                 <input
@@ -244,7 +236,6 @@ export default function App() {
                 </button>
               </div>
 
-              {/* Filter Tabs */}
               <div className="flex items-center justify-between">
                 <div className="flex gap-1 bg-slate-800/80 p-1 rounded-xl border border-slate-700">
                   <button
@@ -272,7 +263,6 @@ export default function App() {
                   </button>
                 </div>
 
-                {/* Search Bar */}
                 <input
                   type="text"
                   value={chatSearch}
@@ -282,7 +272,6 @@ export default function App() {
                 />
               </div>
 
-              {/* Conversation Items List */}
               <div className="space-y-2">
                 {filteredConversations.length > 0 ? (
                   filteredConversations.map((c) => (
@@ -326,7 +315,7 @@ export default function App() {
 
         {/* AI Match Tab */}
         {activeTab === 'matchmaking' && (
-          <div className="space-y-4">
+          <div className="p-3 space-y-4 overflow-y-auto pb-24">
             <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-sm">
               <h2 className="text-sm font-semibold text-emerald-400 mb-1 flex items-center gap-1.5">
                 <Sparkles className="w-4 h-4" /> AI Interest Logger & Matchmaker
@@ -381,7 +370,7 @@ export default function App() {
 
         {/* Profile Tab */}
         {activeTab === 'profile' && profile && (
-          <div className="bg-slate-800 p-4 rounded-2xl border border-slate-700 text-xs space-y-3">
+          <div className="p-3 bg-slate-800 p-4 rounded-2xl border border-slate-700 text-xs space-y-3 m-3">
             <h2 className="text-sm font-bold text-emerald-400">Account</h2>
             <div className="p-3 bg-slate-900 rounded-xl flex justify-between">
               <span>Username</span>
@@ -397,30 +386,32 @@ export default function App() {
         )}
       </main>
 
-      {/* Retro Bottom Navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 bg-slate-800 border-t border-slate-700 grid grid-cols-3 p-2 z-20 shadow-lg">
-        <button
-          onClick={() => setActiveTab('matchmaking')}
-          className={`flex flex-col items-center py-1.5 ${activeTab === 'matchmaking' ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}
-        >
-          <Search className="w-5 h-5" />
-          <span className="text-[10px] mt-1">AI Match</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('chat')}
-          className={`flex flex-col items-center py-1.5 ${activeTab === 'chat' ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}
-        >
-          <MessageSquare className="w-5 h-5" />
-          <span className="text-[10px] mt-1">Chats</span>
-        </button>
-        <button
-          onClick={() => setActiveTab('profile')}
-          className={`flex flex-col items-center py-1.5 ${activeTab === 'profile' ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}
-        >
-          <User className="w-5 h-5" />
-          <span className="text-[10px] mt-1">Profile</span>
-        </button>
-      </nav>
+      {/* 3. HIDE BOTTOM NAV BAR WHEN IN CHAT */}
+      {!inChatRoom && (
+        <nav className="fixed bottom-0 left-0 right-0 bg-slate-800 border-t border-slate-700 grid grid-cols-3 p-2 z-20 shadow-lg shrink-0">
+          <button
+            onClick={() => setActiveTab('matchmaking')}
+            className={`flex flex-col items-center py-1.5 ${activeTab === 'matchmaking' ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}
+          >
+            <Search className="w-5 h-5" />
+            <span className="text-[10px] mt-1">AI Match</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('chat')}
+            className={`flex flex-col items-center py-1.5 ${activeTab === 'chat' ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}
+          >
+            <MessageSquare className="w-5 h-5" />
+            <span className="text-[10px] mt-1">Chats</span>
+          </button>
+          <button
+            onClick={() => setActiveTab('profile')}
+            className={`flex flex-col items-center py-1.5 ${activeTab === 'profile' ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}
+          >
+            <User className="w-5 h-5" />
+            <span className="text-[10px] mt-1">Profile</span>
+          </button>
+        </nav>
+      )}
     </div>
   );
 }
