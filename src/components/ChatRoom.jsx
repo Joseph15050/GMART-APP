@@ -10,21 +10,29 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
+    if (!currentUserId || !targetUser?.user_id) return;
+
     fetchMessages();
 
-    // Subscribe to realtime incoming messages between these two users
+    // Subscribe to Supabase Realtime changes
     const channel = supabase
-      .channel('public:messages')
+      .channel(`chat_${currentUserId}_${targetUser.user_id}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages' },
         (payload) => {
           const newMsg = payload.new;
-          if (
+          // Check if message belongs to this conversation
+          const isRelevant =
             (newMsg.sender_id === currentUserId && newMsg.receiver_id === targetUser.user_id) ||
-            (newMsg.sender_id === targetUser.user_id && newMsg.receiver_id === currentUserId)
-          ) {
-            setMessages((prev) => [...prev, newMsg]);
+            (newMsg.sender_id === targetUser.user_id && newMsg.receiver_id === currentUserId);
+
+          if (isRelevant) {
+            setMessages((prev) => {
+              // Avoid duplicate messages if already added
+              if (prev.some((m) => m.id === newMsg.id)) return prev;
+              return [...prev, newMsg];
+            });
           }
         }
       )
@@ -33,14 +41,14 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [targetUser]);
+  }, [currentUserId, targetUser]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
   const fetchMessages = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('messages')
       .select('*')
       .or(
@@ -48,7 +56,11 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
       )
       .order('created_at', { ascending: true });
 
-    if (data) setMessages(data);
+    if (error) {
+      console.error('Fetch messages error:', error);
+    } else if (data) {
+      setMessages(data);
+    }
   };
 
   const handleSendMessage = async (e) => {
@@ -57,23 +69,36 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
 
     setLoading(true);
     const amountVal = parseFloat(sendAmount) || 0;
+    const msgText = inputMessage.trim() || `Sent ${amountVal} GMART Escrow`;
 
     try {
-      const { error } = await supabase.from('messages').insert([
-        {
-          sender_id: currentUserId,
-          receiver_id: targetUser.user_id,
-          message_text: inputMessage.trim() || `Sent ${amountVal} GMART`,
-          amount: amountVal,
-          is_escrow: amountVal > 0,
-        },
-      ]);
+      const { data, error } = await supabase
+        .from('messages')
+        .insert([
+          {
+            sender_id: currentUserId,
+            receiver_id: targetUser.user_id,
+            message_text: msgText,
+            amount: amountVal,
+            is_escrow: amountVal > 0,
+          },
+        ])
+        .select();
 
       if (error) throw error;
+
       setInputMessage('');
       setSendAmount('');
+
+      // Optimistically append message if Realtime hasn't pushed it yet
+      if (data && data[0]) {
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === data[0].id)) return prev;
+          return [...prev, data[0]];
+        });
+      }
     } catch (err) {
-      alert(err.message);
+      alert(err.message || 'Failed to send message.');
     } finally {
       setLoading(false);
     }
@@ -95,7 +120,7 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
           </div>
         </div>
         <div className="flex items-center gap-1 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 rounded-full text-[10px] text-emerald-400">
-          <ShieldCheck className="w-3.5 h-3.5" /> Text-Only Privacy
+          <ShieldCheck className="w-3.5 h-3.5" /> Gingomart Secure Escrow
         </div>
       </div>
 
