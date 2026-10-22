@@ -1,252 +1,308 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '../supabaseClient';
-import { PlusCircle, ShieldCheck, ArrowRight, CheckCircle2, XCircle } from 'lucide-react';
+import { Plus, ArrowRight, ShieldCheck, Trash2 } from 'lucide-react';
 
-export default function P2PMarket({ currentUserId, onBalanceChange }) {
+export default function P2PMarket({ currentUserId, onBalanceChange, onSelectChatUser }) {
   const [orders, setOrders] = useState([]);
-  const [showModal, setShowModal] = useState(false);
-  const [amount, setAmount] = useState('');
-  const [price, setPrice] = useState('');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  
+  // Sell Form States (Single free-form payment instructions text)
+  const [amountGmart, setAmountGmart] = useState('');
+  const [pricePerUnit, setPricePerUnit] = useState('');
   const [paymentDetails, setPaymentDetails] = useState('');
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
     fetchOrders();
+
     const channel = supabase
-      .channel('p2p_orders_changes')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'p2p_orders' }, () => {
-        fetchOrders();
-      })
+      .channel('public:p2p_orders')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'p2p_orders' },
+        () => {
+          fetchOrders();
+        }
+      )
       .subscribe();
 
-    return () => supabase.removeChannel(channel);
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   const fetchOrders = async () => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('p2p_orders')
-      .select('*, profiles:seller_id(username, gender_avatar)')
+      .select(`
+        *,
+        profiles:seller_id (username, gender_avatar)
+      `)
       .order('created_at', { ascending: false });
 
-    if (data) setOrders(data);
-  };
-
-  const handleCreateSellOffer = async (e) => {
-    e.preventDefault();
-    if (!amount || !price || !paymentDetails) return;
-
-    setLoading(true);
-    const { data, error } = await supabase.rpc('create_p2p_sell_order', {
-      p_seller_id: currentUserId,
-      p_amount: parseFloat(amount),
-      p_price: parseFloat(price),
-      p_fiat: 'NGN',
-      p_payment_info: paymentDetails,
-    });
-
-    setLoading(false);
-    if (error) {
-      alert(error.message || 'Failed to create offer.');
-    } else {
-      setShowModal(false);
-      setAmount('');
-      setPrice('');
-      setPaymentDetails('');
-      if (onBalanceChange) onBalanceChange();
-      alert('GMART locked in Escrow and listing posted!');
+    if (!error && data) {
+      setOrders(data);
     }
   };
 
+  const handleCreateSellOrder = async () => {
+    if (!amountGmart || !pricePerUnit || !paymentDetails.trim()) {
+      alert('Please fill in all fields including payment instructions.');
+      return;
+    }
+
+    setLoading(true);
+    const { error } = await supabase.rpc('create_p2p_sell_order', {
+      p_seller_id: currentUserId,
+      p_amount: parseFloat(amountGmart),
+      p_price_per_unit: parseFloat(pricePerUnit),
+      p_payment_details: paymentDetails.trim()
+    });
+    setLoading(false);
+
+    if (error) {
+      alert(error.message || 'Failed to create sell order.');
+    } else {
+      setAmountGmart('');
+      setPricePerUnit('');
+      setPaymentDetails('');
+      setShowCreateModal(false);
+      fetchOrders();
+      if (onBalanceChange) onBalanceChange();
+    }
+  };
+
+  const handleDeleteOrder = async (orderId) => {
+    if (!window.confirm('Are you sure you want to delete this listing? (Escrowed GMART will be refunded)')) return;
+    
+    setLoading(true);
+    const { error } = await supabase.rpc('cancel_p2p_order', {
+      p_order_id: orderId,
+      p_user_id: currentUserId
+    });
+    setLoading(false);
+
+    if (error) {
+      // Fallback direct delete if stored procedure handles refund differently
+      const { error: delErr } = await supabase.from('p2p_orders').delete().eq('id', orderId);
+      if (delErr) {
+        alert('Failed to delete order: ' + delErr.message);
+        return;
+      }
+    }
+
+    fetchOrders();
+    if (onBalanceChange) onBalanceChange();
+  };
+
   const handleInitiateBuy = async (order) => {
-    if (order.seller_id === currentUserId) return alert('You cannot buy from your own offer.');
+    if (order.seller_id === currentUserId) {
+      alert("You cannot buy your own order.");
+      return;
+    }
 
     const { error } = await supabase
       .from('p2p_orders')
-      .update({ buyer_id: currentUserId, status: 'pending_payment' })
+      .update({ 
+        buyer_id: currentUserId, 
+        status: 'pending_payment' 
+      })
       .eq('id', order.id);
 
-    if (!error) {
-      alert(`Order initiated! Transfer ₦${(order.amount_gmart * order.price_per_unit).toLocaleString()} to the seller's account.`);
+    if (error) {
+      alert('Failed to initiate order: ' + error.message);
+    } else {
+      fetchOrders();
     }
   };
 
   const handleReleaseEscrow = async (orderId) => {
-    if (!window.confirm('Confirm you received the full payment in your bank account?')) return;
+    if (!window.confirm('Confirm that you have received payment and wish to release GMART from escrow?')) return;
 
     setLoading(true);
     const { error } = await supabase.rpc('release_p2p_escrow', {
       p_order_id: orderId,
-      p_seller_id: currentUserId,
+      p_seller_id: currentUserId
     });
     setLoading(false);
 
-    if (!error) {
-      alert('GMART released to buyer!');
-      if (onBalanceChange) onBalanceChange();
+    if (error) {
+      alert(error.message || 'Failed to release escrow.');
     } else {
-      alert('Error releasing escrow: ' + error.message);
+      alert('Escrow released successfully!');
+      fetchOrders();
+      if (onBalanceChange) onBalanceChange();
     }
   };
 
   return (
-    <div className="p-3 space-y-4 pb-24">
-      {/* HEADER BAR */}
-      <div className="flex justify-between items-center bg-slate-800 p-3 rounded-2xl border border-slate-700">
-        <div>
-          <h2 className="text-sm font-bold text-slate-100 flex items-center gap-1.5">
-            <ShieldCheck className="w-4 h-4 text-emerald-400" /> P2P Escrow Market
-          </h2>
-          <p className="text-[10px] text-slate-400">Buy & Sell GMART securely with local currency</p>
-        </div>
+    <div className="p-3 space-y-4 overflow-y-auto pb-24 text-xs">
+      <div className="flex justify-between items-center">
+        <h2 className="text-xl font-black text-slate-100">P2P Market</h2>
         <button
-          onClick={() => setShowModal(true)}
-          className="bg-emerald-600 hover:bg-emerald-500 text-white text-xs px-3 py-1.5 rounded-xl font-bold flex items-center gap-1"
+          onClick={() => setShowCreateModal(!showCreateModal)}
+          className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition"
         >
-          <PlusCircle className="w-3.5 h-3.5" /> Sell GMART
+          <Plus className="w-4 h-4" /> Sell GMART
         </button>
       </div>
 
-{/* ORDERS LIST */}
-<div className="space-y-3">
-  {orders.map((order) => {
-    const totalCost = (order.amount_gmart * order.price_per_unit).toLocaleString();
-    const isSeller = order.seller_id === currentUserId;
-    const isBuyer = order.buyer_id === currentUserId;
+      {/* CREATE SELL ORDER MODAL / BOX */}
+      {showCreateModal && (
+        <div className="bg-slate-800 p-4 rounded-2xl border border-slate-700 space-y-3 shadow-lg">
+          <div className="flex justify-between items-center">
+            <h3 className="font-bold text-emerald-400">Create P2P Sell Order</h3>
+            <span className="text-[10px] text-slate-400 flex items-center gap-1">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Escrow Protected
+            </span>
+          </div>
 
-    return (
-      <div key={order.id} className="bg-slate-800/90 p-3.5 rounded-2xl border border-slate-700 space-y-2">
-        <div className="flex justify-between items-center">
-          <span className="text-xs font-bold text-slate-200">
-            @{order.profiles?.username || 'Vendor'}
-          </span>
-          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-            order.status === 'open' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
-            order.status === 'pending_payment' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
-            'bg-slate-700 text-slate-400'
-          }`}>
-            {order.status.replace('_', ' ').toUpperCase()}
-          </span>
-        </div>
-
-        <div className="flex justify-between items-baseline border-y border-slate-700/50 py-2">
           <div>
-            <p className="text-[10px] text-slate-400">Amount</p>
-            <p className="text-xs font-black text-amber-400">{order.amount_gmart} GMART</p>
+            <label className="text-[10px] text-slate-400 block mb-1">Amount (GMART)</label>
+            <input
+              type="number"
+              value={amountGmart}
+              onChange={(e) => setAmountGmart(e.target.value)}
+              placeholder="0.00"
+              className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-slate-100 focus:outline-none focus:border-emerald-500"
+            />
           </div>
-          <div className="text-right">
-            <p className="text-[10px] text-slate-400">Total Price</p>
-            <p className="text-xs font-black text-slate-100">₦{totalCost} <span className="text-[10px] font-normal text-slate-400">({order.price_per_unit}/unit)</span></p>
+
+          <div>
+            <label className="text-[10px] text-slate-400 block mb-1">Price per GMART (₦)</label>
+            <input
+              type="number"
+              value={pricePerUnit}
+              onChange={(e) => setPricePerUnit(e.target.value)}
+              placeholder="0.00"
+              className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-slate-100 focus:outline-none focus:border-emerald-500"
+            />
           </div>
-        </div>
 
-        {/* ACTION BUTTONS */}
-        {order.status === 'open' && !isSeller && (
-          <button
-            onClick={() => handleInitiateBuy(order)}
-            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs py-2 rounded-xl font-bold flex items-center justify-center gap-1"
-          >
-            Buy GMART <ArrowRight className="w-3.5 h-3.5" />
-          </button>
-        )}
+          <div>
+            <label className="text-[10px] text-slate-400 block mb-1">Payment Instructions / Account Details Statement</label>
+            <textarea
+              value={paymentDetails}
+              onChange={(e) => setPaymentDetails(e.target.value)}
+              placeholder="Type any payment details, bank names, account numbers, or instructions here..."
+              className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-slate-100 focus:outline-none focus:border-emerald-500 h-24 resize-none"
+            />
+          </div>
 
-        {order.status === 'pending_payment' && (
-          <div className="p-2.5 bg-slate-900/90 rounded-xl border border-slate-700 space-y-2 text-xs">
-            <div className="bg-slate-800 p-2.5 rounded-lg border border-slate-700">
-              <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Payment Instructions / Bank Details:</p>
-              <p className="text-xs text-amber-300 font-mono whitespace-pre-wrap">{order.payment_details}</p>
-            </div>
-
-            {/* CHAT VENDOR BUTTON */}
+          <div className="flex gap-2 pt-1">
             <button
-              onClick={() => {
-                if (onSelectChatUser) {
-                  onSelectChatUser({
-                    user_id: order.seller_id,
-                    username: order.profiles?.username || 'Vendor',
-                    gender_avatar: order.profiles?.gender_avatar || 'male'
-                  });
-                }
-              }}
-              className="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs py-2 rounded-xl font-bold"
+              onClick={handleCreateSellOrder}
+              disabled={loading}
+              className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 rounded-xl font-bold transition"
             >
-              💬 Chat with @{order.profiles?.username || 'Vendor'}
+              Post Listing & Lock Escrow
             </button>
-
-            {isSeller && (
-              <button
-                onClick={() => handleReleaseEscrow(order.id)}
-                disabled={loading}
-                className="w-full bg-amber-500 hover:bg-amber-400 text-slate-900 font-extrabold text-xs py-2 rounded-xl mt-1"
-              >
-                Release Escrow GMART
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-    );
-  })}
-</div>
-
-      {/* CREATE OFFER MODAL */}
-      {showModal && (
-        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-slate-800 border border-slate-700 p-5 rounded-2xl w-full max-w-sm space-y-4">
-            <h3 className="text-sm font-bold text-slate-100">Post GMART Sell Offer</h3>
-            <form onSubmit={handleCreateSellOffer} className="space-y-3">
-              <div>
-                <label className="text-[10px] text-slate-400 block mb-1">GMART Amount to Lock</label>
-                <input
-                  type="number"
-                  required
-                  value={amount}
-                  onChange={(e) => setAmount(e.target.value)}
-                  placeholder="e.g. 100"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] text-slate-400 block mb-1">Price per GMART (NGN)</label>
-                <input
-                  type="number"
-                  required
-                  value={price}
-                  onChange={(e) => setPrice(e.target.value)}
-                  placeholder="e.g. 1000"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="text-[10px] text-slate-400 block mb-1">Bank Payment Details</label>
-                <textarea
-                  required
-                  value={paymentDetails}
-                  onChange={(e) => setPaymentDetails(e.target.value)}
-                  placeholder="e.g., Bank Name: Kuda, Account Number: 1234567890, Name: John Doe"
-                  className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-xs text-slate-100 focus:outline-none h-20 resize-none"
-                />
-              </div>
-              <div className="flex gap-2 pt-2">
-                <button
-                  type="button"
-                  onClick={() => setShowModal(false)}
-                  className="flex-1 bg-slate-700 text-slate-300 py-2 rounded-xl text-xs font-semibold"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="flex-1 bg-emerald-600 text-white py-2 rounded-xl text-xs font-bold"
-                >
-                  Post Offer
-                </button>
-              </div>
-            </form>
+            <button
+              onClick={() => setShowCreateModal(false)}
+              className="bg-slate-700 hover:bg-slate-600 text-slate-300 px-4 py-2.5 rounded-xl font-bold transition"
+            >
+              Cancel
+            </button>
           </div>
         </div>
       )}
+
+      {/* ORDERS LIST */}
+      <div className="space-y-3">
+        {orders.length > 0 ? (
+          orders.map((order) => {
+            const totalCost = (order.amount_gmart * order.price_per_unit).toLocaleString();
+            const isSeller = order.seller_id === currentUserId;
+
+            return (
+              <div key={order.id} className="bg-slate-800/90 p-3.5 rounded-2xl border border-slate-700 space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-xs font-bold text-slate-200">
+                    @{order.profiles?.username || 'Vendor'}
+                  </span>
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                    order.status === 'open' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                    order.status === 'pending_payment' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
+                    'bg-slate-700 text-slate-400'
+                  }`}>
+                    {order.status.replace('_', ' ').toUpperCase()}
+                  </span>
+                </div>
+
+                <div className="flex justify-between items-baseline border-y border-slate-700/50 py-2">
+                  <div>
+                    <p className="text-[10px] text-slate-400">Amount</p>
+                    <p className="text-xs font-black text-amber-400">{order.amount_gmart} GMART</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-[10px] text-slate-400">Total Price</p>
+                    <p className="text-xs font-black text-slate-100">₦{totalCost} <span className="text-[10px] font-normal text-slate-400">({order.price_per_unit}/unit)</span></p>
+                  </div>
+                </div>
+
+                {/* ACTION BUTTONS */}
+                {order.status === 'open' && !isSeller && (
+                  <button
+                    onClick={() => handleInitiateBuy(order)}
+                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs py-2 rounded-xl font-bold flex items-center justify-center gap-1 transition"
+                  >
+                    Buy GMART <ArrowRight className="w-3.5 h-3.5" />
+                  </button>
+                )}
+
+                {order.status === 'open' && isSeller && (
+                  <button
+                    onClick={() => handleDeleteOrder(order.id)}
+                    disabled={loading}
+                    className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs py-2 rounded-xl font-bold flex items-center justify-center gap-1 transition"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" /> Delete Listing
+                  </button>
+                )}
+
+                {order.status === 'pending_payment' && (
+                  <div className="p-2.5 bg-slate-900/90 rounded-xl border border-slate-700 space-y-2 text-xs">
+                    <div className="bg-slate-800 p-2.5 rounded-lg border border-slate-700">
+                      <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Payment Instructions / Account Details:</p>
+                      <p className="text-xs text-amber-300 font-mono whitespace-pre-wrap">{order.payment_details}</p>
+                    </div>
+
+                    {/* CHAT VENDOR BUTTON */}
+                    <button
+                      onClick={() => {
+                        if (onSelectChatUser) {
+                          onSelectChatUser({
+                            user_id: isSeller ? order.buyer_id : order.seller_id,
+                            username: isSeller ? 'Buyer' : (order.profiles?.username || 'Vendor'),
+                            gender_avatar: order.profiles?.gender_avatar || 'male'
+                          });
+                        }
+                      }}
+                      className="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs py-2 rounded-xl font-bold transition"
+                    >
+                      💬 Chat with @{order.profiles?.username || 'Trader'}
+                    </button>
+
+                    {isSeller && (
+                      <button
+                        onClick={() => handleReleaseEscrow(order.id)}
+                        disabled={loading}
+                        className="w-full bg-amber-500 hover:bg-amber-400 text-slate-900 font-extrabold text-xs py-2 rounded-xl mt-1 transition"
+                      >
+                        Release Escrow GMART
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })
+        ) : (
+          <div className="text-center py-12 text-slate-500 text-xs">
+            No active P2P orders available.
+          </div>
+        )}
+      </div>
     </div>
   );
-      }
-                
+}
