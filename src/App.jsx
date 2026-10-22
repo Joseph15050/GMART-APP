@@ -451,6 +451,13 @@ export default function App() {
           </div>
         )}
 
+        {activeTab === 'p2p' && (
+  <P2PMarket
+    currentUserId={session.user.id}
+    onBalanceChange={() => fetchProfile(session.user.id)} />
+        )}
+    
+        
         {/* PROFILE TAB */}
         {activeTab === 'profile' && profile && (
           <div className="p-3 bg-slate-800 p-4 rounded-2xl border border-slate-700 text-xs space-y-3 m-3">
@@ -486,6 +493,15 @@ export default function App() {
             <MessageSquare className="w-5 h-5" />
             <span className="text-[10px] mt-1">Chats</span>
           </button>
+          
+<button
+  onClick={() => setActiveTab('p2p')}
+  className={`flex flex-col items-center py-1.5 ${activeTab === 'p2p' ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}
+>
+  <Wallet className="w-5 h-5" />
+  <span className="text-[10px] mt-1">P2P</span>
+</button>
+          
           <button
             onClick={() => setActiveTab('profile')}
             className={`flex flex-col items-center py-1.5 ${activeTab === 'profile' ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}
