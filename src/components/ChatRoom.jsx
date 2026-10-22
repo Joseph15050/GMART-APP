@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
-import { Send, Wallet, ShieldCheck, ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Send, Lock, Flame, Wallet, User, Info } from 'lucide-react';
 
 export default function ChatRoom({ currentUserId, targetUser, onBack }) {
   const [messages, setMessages] = useState([]);
   const [inputMessage, setInputMessage] = useState('');
   const [sendAmount, setSendAmount] = useState('');
   const [loading, setLoading] = useState(false);
+  const [showEscrowModal, setShowEscrowModal] = useState(false);
   const messagesEndRef = useRef(null);
 
   const targetId = targetUser.user_id || targetUser.id;
@@ -15,23 +16,24 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
     if (!currentUserId || !targetId) return;
 
     fetchMessages();
+    markMessagesAsRead();
 
+    // Subscribe to realtime updates for this conversation
     const channel = supabase
-      .channel(`chat_${currentUserId}_${targetId}`)
+      .channel(`public:messages:${currentUserId}_${targetId}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages' },
         (payload) => {
           const newMsg = payload.new;
-          const isRelevant =
+          if (
             (newMsg.sender_id === currentUserId && newMsg.receiver_id === targetId) ||
-            (newMsg.sender_id === targetId && newMsg.receiver_id === currentUserId);
-
-          if (isRelevant) {
-            setMessages((prev) => {
-              if (prev.some((m) => m.id === newMsg.id)) return prev;
-              return [...prev, newMsg];
-            });
+            (newMsg.sender_id === targetId && newMsg.receiver_id === currentUserId)
+          ) {
+            setMessages((prev) => [...prev, newMsg]);
+            if (newMsg.receiver_id === currentUserId) {
+              markMessagesAsRead();
+            }
           }
         }
       )
@@ -50,23 +52,31 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
     const { data, error } = await supabase
       .from('messages')
       .select('*')
-      .or(`and(sender_id.eq.${currentUserId},receiver_id.eq.${targetId}),and(sender_id.eq.${targetId},receiver_id.eq.${currentUserId})`)
+      .or(
+        `and(sender_id.eq.${currentUserId},receiver_id.eq.${targetId}),and(sender_id.eq.${targetId},receiver_id.eq.${currentUserId})`
+      )
       .order('created_at', { ascending: true });
 
-    if (error) {
-      console.error('Fetch messages error:', error);
-    } else if (data) {
-      setMessages(data);
-    }
+    if (error) console.error(error);
+    else if (data) setMessages(data);
   };
 
-  const handleSendMessage = async (e) => {
-    e.preventDefault();
-    if (!inputMessage.trim() && !sendAmount) return;
+  const markMessagesAsRead = async () => {
+    await supabase
+      .from('messages')
+      .update({ is_read: true })
+      .eq('sender_id', targetId)
+      .eq('receiver_id', currentUserId)
+      .eq('is_read', false);
+  };
+
+  const handleSendMessage = async (textToSend = null) => {
+    const text = textToSend || inputMessage.trim();
+    const amountVal = parseFloat(sendAmount) || 0;
+
+    if (!text && amountVal === 0) return;
 
     setLoading(true);
-    const amountVal = parseFloat(sendAmount) || 0;
-    const msgText = inputMessage.trim() || `Sent ${amountVal} GMART Escrow`;
 
     try {
       const { data, error } = await supabase
@@ -75,7 +85,7 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
           {
             sender_id: currentUserId,
             receiver_id: targetId,
-            message_text: msgText,
+            message_text: text || `Sent ${amountVal} GMART`,
             amount: amountVal,
             is_escrow: amountVal > 0,
           },
@@ -86,6 +96,7 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
 
       setInputMessage('');
       setSendAmount('');
+      setShowEscrowModal(false);
 
       if (data && data[0]) {
         setMessages((prev) => {
@@ -94,98 +105,157 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
         });
       }
     } catch (err) {
-      alert(err.message || 'Failed to send message.');
+      alert(err.message || 'Failed to send message');
     } finally {
       setLoading(false);
     }
   };
 
+  const quickReplies = ["How far? 🤙", "I dey o 😂", "Wetin dey happen?", "Where you dey?"];
+
   return (
-    <div className="flex flex-col h-[calc(100vh-140px)] bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-      {/* Fixed Header */}
-      <div className="bg-slate-800 p-3 border-b border-slate-700 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-2">
-          <button onClick={onBack} className="p-1 text-slate-400 hover:text-emerald-400">
-            <ArrowLeft className="w-5 h-5" />
+    <div className="flex flex-col h-[calc(100vh-120px)] bg-slate-100 dark:bg-slate-900 rounded-3xl overflow-hidden shadow-2xl border border-slate-200 dark:border-slate-800">
+      {/* Top Header */}
+      <div className="bg-white dark:bg-slate-800 px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-3">
+          <button onClick={onBack} className="p-1 text-slate-600 dark:text-slate-300 hover:text-emerald-500">
+            <ArrowLeft className="w-6 h-6" />
           </button>
           <div>
-            <h3 className="text-xs font-bold text-emerald-400">@{targetUser.username}</h3>
-            <p className="text-[10px] text-slate-400">
-              {targetUser.gender_avatar === 'female' ? '👩 Female Avatar' : '👨 Male Avatar'}
+            <h2 className="text-base font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1">
+              @{targetUser.username}
+            </h2>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
+              <Lock className="w-3 h-3 text-amber-500" /> Private · only you and @{targetUser.username} can see this
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-1 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-1 rounded-full text-[10px] text-emerald-400">
-          <ShieldCheck className="w-3.5 h-3.5" /> Gingomart Secure Escrow
-        </div>
       </div>
 
-      {/* Scrollable Messages Area */}
-      <div className="flex-1 p-3 overflow-y-auto space-y-3">
-        {messages.length === 0 ? (
-          <div className="text-center py-12 text-xs text-slate-500">
-            No messages yet. Start the conversation with @{targetUser.username}!
+      {/* Chat Canvas */}
+      <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-50 dark:bg-slate-950">
+        {/* Streak Card */}
+        <div className="bg-white dark:bg-slate-800 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full bg-orange-500/10 flex items-center justify-center text-orange-500">
+              <Flame className="w-6 h-6 fill-orange-500" />
+            </div>
+            <div>
+              <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100">Start a streak</h4>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                Both of you do something together on the same day, every day
+              </p>
+            </div>
           </div>
-        ) : (
-          messages.map((msg) => {
-            const isMe = msg.sender_id === currentUserId;
+          <button className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold shrink-0">
+            What counts?
+          </button>
+        </div>
+
+        {/* Quick Action Pills */}
+        <div className="flex gap-2 justify-center">
+          <button className="bg-emerald-50 dark:bg-slate-800 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-slate-700 px-3.5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1">
+            🏠 Profile
+          </button>
+          <button 
+            onClick={() => setShowEscrowModal(!showEscrowModal)}
+            className="bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50 px-3.5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1"
+          >
+            💸 Send GMART
+          </button>
+        </div>
+
+        {/* Escrow Modal / Dropdown */}
+        {showEscrowModal && (
+          <div className="bg-amber-500/10 border border-amber-500/30 p-3 rounded-2xl flex items-center gap-2">
+            <input
+              type="number"
+              value={sendAmount}
+              onChange={(e) => setSendAmount(e.target.value)}
+              placeholder="Amount GMART"
+              className="bg-white dark:bg-slate-800 border border-amber-400 rounded-xl px-3 py-1.5 text-xs text-slate-800 dark:text-slate-100 font-bold w-full focus:outline-none"
+            />
+            <button
+              onClick={() => handleSendMessage()}
+              className="bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold px-4 py-2 rounded-xl shrink-0"
+            >
+              Send Escrow
+            </button>
+          </div>
+        )}
+
+        {/* Messages */}
+        {messages.map((msg) => {
+          const isMe = msg.sender_id === currentUserId;
+          const isEscrow = msg.amount > 0;
+
+          if (isEscrow) {
             return (
-              <div key={msg.id} className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
-                <div
-                  className={`max-w-[80%] p-3 rounded-2xl text-xs ${
-                    isMe
-                      ? 'bg-emerald-600 text-white rounded-br-none'
-                      : 'bg-slate-800 border border-slate-700 text-slate-200 rounded-bl-none'
-                  }`}
-                >
-                  {msg.amount > 0 && (
-                    <div className="mb-1 bg-amber-500/20 border border-amber-500/40 p-2 rounded-lg text-amber-300 font-bold flex items-center gap-1.5">
-                      <Wallet className="w-3.5 h-3.5 shrink-0" />
-                      <span>{msg.amount} GMART Escrow Sent</span>
-                    </div>
-                  )}
-                  <p>{msg.message_text}</p>
-                  <span className="block text-[9px] opacity-60 text-right mt-1">
-                    {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              <div key={msg.id} className="flex justify-center my-2">
+                <div className="bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700/50 text-amber-900 dark:text-amber-300 px-4 py-2 rounded-full text-xs font-semibold flex items-center gap-2 shadow-sm">
+                  <span>{isMe ? 'You sent them' : `@${targetUser.username} sent you`}</span>
+                  <span className="bg-amber-400 dark:bg-amber-500 text-slate-950 px-2 py-0.5 rounded-md font-bold">
+                    💸 {msg.amount} GMART
+                  </span>
+                  <span className="text-[10px] opacity-70">
+                    · {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </span>
                 </div>
               </div>
             );
-          })
-        )}
+          }
+
+          return (
+            <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
+              <div
+                className={`max-w-[78%] px-4 py-2.5 rounded-2xl text-xs shadow-sm ${
+                  isMe
+                    ? 'bg-emerald-600 text-white rounded-br-none'
+                    : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-bl-none'
+                }`}
+              >
+                <p className="leading-relaxed">{msg.message_text}</p>
+                <span className="block text-[9px] opacity-60 text-right mt-1 font-mono">
+                  {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                </span>
+              </div>
+            </div>
+          );
+        })}
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Fixed Sticky Input Bar */}
-      <form onSubmit={handleSendMessage} className="p-2 bg-slate-800 border-t border-slate-700 flex flex-col gap-2 shrink-0">
-        <div className="flex gap-2 items-center">
-          <div className="relative w-24 shrink-0">
-            <span className="absolute left-2 top-2 text-[9px] text-slate-400 font-bold">GMART:</span>
-            <input
-              type="number"
-              step="0.01"
-              value={sendAmount}
-              onChange={(e) => setSendAmount(e.target.value)}
-              placeholder="0.00"
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-11 pr-1.5 py-1.5 text-xs text-amber-400 font-bold focus:outline-none focus:border-amber-500"
-            />
-          </div>
-          <input
-            type="text"
-            value={inputMessage}
-            onChange={(e) => setInputMessage(e.target.value)}
-            placeholder="Type a secure message..."
-            className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500"
-          />
+      {/* Quick Reply Chips */}
+      <div className="px-3 py-1.5 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 flex gap-2 overflow-x-auto shrink-0">
+        {quickReplies.map((reply, idx) => (
           <button
-            type="submit"
-            disabled={loading}
-            className="bg-emerald-600 hover:bg-emerald-500 text-white p-2 rounded-lg transition disabled:opacity-50 shrink-0"
+            key={idx}
+            onClick={() => handleSendMessage(reply)}
+            className="bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-300 hover:bg-emerald-500 hover:text-white text-[11px] px-3 py-1 rounded-full whitespace-nowrap font-medium transition"
           >
-            <Send className="w-4 h-4" />
+            {reply}
           </button>
-        </div>
-      </form>
+        ))}
+      </div>
+
+      {/* Bottom Message Bar */}
+      <div className="p-3 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 flex items-center gap-2 shrink-0">
+        <input
+          type="text"
+          value={inputMessage}
+          onChange={(e) => setInputMessage(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+          placeholder={`Message @${targetUser.username}...`}
+          className="flex-1 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-full px-4 py-2.5 text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-emerald-500"
+        />
+        <button
+          onClick={() => handleSendMessage()}
+          disabled={loading || !inputMessage.trim()}
+          className="bg-emerald-600 hover:bg-emerald-500 text-white p-2.5 rounded-full shadow transition disabled:opacity-50 shrink-0"
+        >
+          <Send className="w-4 h-4" />
+        </button>
+      </div>
     </div>
   );
 }
