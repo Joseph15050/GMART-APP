@@ -1,308 +1,220 @@
 import React, { useState, useEffect } from 'react';
-import { supabase } from '../supabaseClient';
-import { Plus, ArrowRight, ShieldCheck, Trash2 } from 'lucide-react';
+import { supabase } from './supabaseClient';
+import AuthModal from './components/AuthModal';
+import ChatRoom from './components/ChatRoom';
+import P2PMarket from './components/P2PMarket';
+import { logUserInterest, searchLikeminds } from './aiEngine';
+import { MessageSquare, Search, User, Wallet, LogOut, Bell, Edit2, Sparkles, Trash2 } from 'lucide-react';
 
-export default function P2PMarket({ currentUserId, onBalanceChange, onSelectChatUser }) {
-  const [orders, setOrders] = useState([]);
-  const [showCreateModal, setShowCreateModal] = useState(false);
+export default function App() {
+  const [session, setSession] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [activeTab, setActiveTab] = useState('chat');
   
-  // Sell Form States (Single free-form payment instructions text)
-  const [amountGmart, setAmountGmart] = useState('');
-  const [pricePerUnit, setPricePerUnit] = useState('');
-  const [paymentDetails, setPaymentDetails] = useState('');
-  const [loading, setLoading] = useState(false);
+  // Chat List States
+  const [conversations, setConversations] = useState([]);
+  const [chatFilter, setChatFilter] = useState('all');
+  const [chatSearch, setChatSearch] = useState('');
+  const [directUsername, setDirectUsername] = useState('');
+  const [selectedChatUser, setSelectedChatUser] = useState(null);
+
+  // AI Match & Log States
+  const [logInput, setLogInput] = useState('');
+  const [userLogs, setUserLogs] = useState([]);
+  const [matchResults, setMatchResults] = useState([]);
+  const [loadingAI, setLoadingAI] = useState(false);
+  const [statusMessage, setStatusMessage] = useState('');
 
   useEffect(() => {
-    fetchOrders();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) {
+        fetchProfile(session.user.id);
+        fetchRecentConversations(session.user.id);
+        fetchUserLogs(session.user.id);
+        subscribeToProfileUpdates(session.user.id);
+      }
+    });
 
-    const channel = supabase
-      .channel('public:p2p_orders')
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session) {
+        fetchProfile(session.user.id);
+        fetchRecentConversations(session.user.id);
+        fetchUserLogs(session.user.id);
+        subscribeToProfileUpdates(session.user.id);
+      } else {
+        setProfile(null);
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const fetchProfile = async (userId) => {
+    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
+    if (data) setProfile(data);
+  };
+
+  const subscribeToProfileUpdates = (userId) => {
+    supabase
+      .channel(`public:profiles:${userId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'p2p_orders' },
-        () => {
-          fetchOrders();
+        { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` },
+        (payload) => {
+          setProfile(payload.new);
         }
       )
       .subscribe();
+  };
 
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
-  const fetchOrders = async () => {
-    const { data, error } = await supabase
-      .from('p2p_orders')
-      .select(`
-        *,
-        profiles:seller_id (username, gender_avatar)
-      `)
+  const fetchUserLogs = async (userId) => {
+    const { data } = await supabase
+      .from('user_logs')
+      .select('*')
+      .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
-    if (!error && data) {
-      setOrders(data);
-    }
+    if (data) setUserLogs(data);
   };
 
-  const handleCreateSellOrder = async () => {
-    if (!amountGmart || !pricePerUnit || !paymentDetails.trim()) {
-      alert('Please fill in all fields including payment instructions.');
-      return;
-    }
+  const fetchRecentConversations = async (userId) => {
+    const { data: msgs, error } = await supabase
+      .from('messages')
+      .select('*')
+      .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
+      .order('created_at', { ascending: false });
 
-    setLoading(true);
-    const { error } = await supabase.rpc('create_p2p_sell_order', {
-      p_seller_id: currentUserId,
-      p_amount: parseFloat(amountGmart),
-      p_price_per_unit: parseFloat(pricePerUnit),
-      p_payment_details: paymentDetails.trim()
-    });
-    setLoading(false);
+    if (error) return;
 
-    if (error) {
-      alert(error.message || 'Failed to create sell order.');
-    } else {
-      setAmountGmart('');
-      setPricePerUnit('');
-      setPaymentDetails('');
-      setShowCreateModal(false);
-      fetchOrders();
-      if (onBalanceChange) onBalanceChange();
-    }
-  };
+    if (msgs && msgs.length > 0) {
+      const otherUserIds = [...new Set(msgs.map(m => m.sender_id === userId ? m.receiver_id : m.sender_id))];
+      const { data: profilesData } = await supabase
+        .from('profiles')
+        .select('id, username, gender_avatar')
+        .in('id', otherUserIds);
 
-  const handleDeleteOrder = async (orderId) => {
-    if (!window.confirm('Are you sure you want to delete this listing? (Escrowed GMART will be refunded)')) return;
-    
-    setLoading(true);
-    const { error } = await supabase.rpc('cancel_p2p_order', {
-      p_order_id: orderId,
-      p_user_id: currentUserId
-    });
-    setLoading(false);
-
-    if (error) {
-      // Fallback direct delete if stored procedure handles refund differently
-      const { error: delErr } = await supabase.from('p2p_orders').delete().eq('id', orderId);
-      if (delErr) {
-        alert('Failed to delete order: ' + delErr.message);
-        return;
+      const profileMap = new Map();
+      if (profilesData) {
+        profilesData.forEach(p => profileMap.set(p.id, p));
       }
-    }
 
-    fetchOrders();
-    if (onBalanceChange) onBalanceChange();
-  };
+      const map = new Map();
+      msgs.forEach((m) => {
+        const otherId = m.sender_id === userId ? m.receiver_id : m.sender_id;
+        const otherProfile = profileMap.get(otherId);
 
-  const handleInitiateBuy = async (order) => {
-    if (order.seller_id === currentUserId) {
-      alert("You cannot buy your own order.");
-      return;
-    }
-
-    const { error } = await supabase
-      .from('p2p_orders')
-      .update({ 
-        buyer_id: currentUserId, 
-        status: 'pending_payment' 
-      })
-      .eq('id', order.id);
-
-    if (error) {
-      alert('Failed to initiate order: ' + error.message);
+        if (!map.has(otherId) && otherProfile) {
+          map.set(otherId, {
+            user_id: otherId,
+            username: otherProfile.username,
+            gender_avatar: otherProfile.gender_avatar,
+            lastMessage: m.message_text,
+            created_at: m.created_at,
+            is_unread: m.receiver_id === userId && !m.is_read,
+          });
+        }
+      });
+      setConversations(Array.from(map.values()));
     } else {
-      fetchOrders();
+      setConversations([]);
     }
   };
 
-  const handleReleaseEscrow = async (orderId) => {
-    if (!window.confirm('Confirm that you have received payment and wish to release GMART from escrow?')) return;
+  const handleLogData = async () => {
+    if (!logInput.trim()) return;
+    setLoadingAI(true);
+    setStatusMessage('Saving interest vector...');
 
-    setLoading(true);
-    const { error } = await supabase.rpc('release_p2p_escrow', {
-      p_order_id: orderId,
-      p_seller_id: currentUserId
-    });
-    setLoading(false);
+    try {
+      await logUserInterest(session.user.id, logInput.trim());
+      setStatusMessage('Log saved!');
+      setLogInput('');
+      await fetchUserLogs(session.user.id);
+    } catch (err) {
+      setStatusMessage(err.message || 'Failed to save log.');
+    } finally {
+      setLoadingAI(false);
+    }
+  };
 
-    if (error) {
-      alert(error.message || 'Failed to release escrow.');
+  const handleDeleteSingleLog = async (logId) => {
+    const { error } = await supabase.from('user_logs').delete().eq('id', logId);
+    if (!error) {
+      setUserLogs((prev) => prev.filter((l) => l.id !== logId));
+    }
+  };
+
+  const handleDeleteAllLogs = async () => {
+    if (!window.confirm('Delete all your logged details?')) return;
+    const { error } = await supabase.from('user_logs').delete().eq('user_id', session.user.id);
+    if (!error) {
+      setUserLogs([]);
+    }
+  };
+
+  const handleFindLikeminds = async () => {
+    if (!logInput.trim()) return;
+    setLoadingAI(true);
+    setStatusMessage('Searching AI vector database...');
+
+    try {
+      const rawResults = await searchLikeminds(logInput.trim(), session.user.id);
+      
+      const uniqueUsersMap = new Map();
+      rawResults.forEach((match) => {
+        if (!uniqueUsersMap.has(match.user_id)) {
+          uniqueUsersMap.set(match.user_id, match);
+        }
+      });
+
+      const deduplicatedResults = Array.from(uniqueUsersMap.values());
+
+      setMatchResults(deduplicatedResults);
+      setStatusMessage(
+        deduplicatedResults.length > 0 
+          ? `Found ${deduplicatedResults.length} match(es)!` 
+          : 'No close matches found.'
+      );
+    } catch (err) {
+      setStatusMessage(err.message || 'Failed to search database.');
+    } finally {
+      setLoadingAI(false);
+    }
+  };
+
+  const handleStartDirectChat = async () => {
+    if (!directUsername.trim()) return;
+    const cleanUser = directUsername.replace('@', '').trim();
+    
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .ilike('username', cleanUser)
+      .single();
+
+    if (data) {
+      setSelectedChatUser({
+        user_id: data.id,
+        username: data.username,
+        gender_avatar: data.gender_avatar,
+      });
+      setDirectUsername('');
     } else {
-      alert('Escrow released successfully!');
-      fetchOrders();
-      if (onBalanceChange) onBalanceChange();
+      alert(`User @${cleanUser} not found.`);
     }
   };
 
-  return (
-    <div className="p-3 space-y-4 overflow-y-auto pb-24 text-xs">
-      <div className="flex justify-between items-center">
-        <h2 className="text-xl font-black text-slate-100">P2P Market</h2>
-        <button
-          onClick={() => setShowCreateModal(!showCreateModal)}
-          className="bg-emerald-600 hover:bg-emerald-500 text-white font-bold px-3 py-2 rounded-xl flex items-center gap-1.5 transition"
-        >
-          <Plus className="w-4 h-4" /> Sell GMART
-        </button>
-      </div>
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
 
-      {/* CREATE SELL ORDER MODAL / BOX */}
-      {showCreateModal && (
-        <div className="bg-slate-800 p-4 rounded-2xl border border-slate-700 space-y-3 shadow-lg">
-          <div className="flex justify-between items-center">
-            <h3 className="font-bold text-emerald-400">Create P2P Sell Order</h3>
-            <span className="text-[10px] text-slate-400 flex items-center gap-1">
-              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" /> Escrow Protected
-            </span>
-          </div>
+  const filteredConversations = conversations.filter((c) => {
+    const matchesSearch = c.username.toLowerCase().includes(chatSearch.toLowerCase());
+    if (chatFilter === 'unread') return matchesSearch && c.is_unread;
+    if (chatFilter === 'read') return matchesSearch && !c.is_unread;
+    return matchesSearch;
+  });
 
-          <div>
-            <label className="text-[10px] text-slate-400 block mb-1">Amount (GMART)</label>
-            <input
-              type="number"
-              value={amountGmart}
-              onChange={(e) => setAmountGmart(e.target.value)}
-              placeholder="0.00"
-              className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-slate-100 focus:outline-none focus:border-emerald-500"
-            />
-          </div>
-
-          <div>
-            <label className="text-[10px] text-slate-400 block mb-1">Price per GMART (₦)</label>
-            <input
-              type="number"
-              value={pricePerUnit}
-              onChange={(e) => setPricePerUnit(e.target.value)}
-              placeholder="0.00"
-              className="w-full bg-slate-900 border border-slate-700 rounded-xl p-2.5 text-slate-100 focus:outline-none focus:border-emerald-500"
-            />
-          </div>
-
-          <div>
-            <label className="text-[10px] text-slate-400 block mb-1">Payment Instructions / Account Details Statement</label>
-            <textarea
-              value={paymentDetails}
-              onChange={(e) => setPaymentDetails(e.target.value)}
-              placeholder="Type any payment details, bank names, account numbers, or instructions here..."
-              className="w-full bg-slate-900 border border-slate-700 rounded-xl p-3 text-slate-100 focus:outline-none focus:border-emerald-500 h-24 resize-none"
-            />
-          </div>
-
-          <div className="flex gap-2 pt-1">
-            <button
-              onClick={handleCreateSellOrder}
-              disabled={loading}
-              className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 rounded-xl font-bold transition"
-            >
-              Post Listing & Lock Escrow
-            </button>
-            <button
-              onClick={() => setShowCreateModal(false)}
-              className="bg-slate-700 hover:bg-slate-600 text-slate-300 px-4 py-2.5 rounded-xl font-bold transition"
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ORDERS LIST */}
-      <div className="space-y-3">
-        {orders.length > 0 ? (
-          orders.map((order) => {
-            const totalCost = (order.amount_gmart * order.price_per_unit).toLocaleString();
-            const isSeller = order.seller_id === currentUserId;
-
-            return (
-              <div key={order.id} className="bg-slate-800/90 p-3.5 rounded-2xl border border-slate-700 space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-xs font-bold text-slate-200">
-                    @{order.profiles?.username || 'Vendor'}
-                  </span>
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
-                    order.status === 'open' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
-                    order.status === 'pending_payment' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20' :
-                    'bg-slate-700 text-slate-400'
-                  }`}>
-                    {order.status.replace('_', ' ').toUpperCase()}
-                  </span>
-                </div>
-
-                <div className="flex justify-between items-baseline border-y border-slate-700/50 py-2">
-                  <div>
-                    <p className="text-[10px] text-slate-400">Amount</p>
-                    <p className="text-xs font-black text-amber-400">{order.amount_gmart} GMART</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-[10px] text-slate-400">Total Price</p>
-                    <p className="text-xs font-black text-slate-100">₦{totalCost} <span className="text-[10px] font-normal text-slate-400">({order.price_per_unit}/unit)</span></p>
-                  </div>
-                </div>
-
-                {/* ACTION BUTTONS */}
-                {order.status === 'open' && !isSeller && (
-                  <button
-                    onClick={() => handleInitiateBuy(order)}
-                    className="w-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs py-2 rounded-xl font-bold flex items-center justify-center gap-1 transition"
-                  >
-                    Buy GMART <ArrowRight className="w-3.5 h-3.5" />
-                  </button>
-                )}
-
-                {order.status === 'open' && isSeller && (
-                  <button
-                    onClick={() => handleDeleteOrder(order.id)}
-                    disabled={loading}
-                    className="w-full bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/30 text-xs py-2 rounded-xl font-bold flex items-center justify-center gap-1 transition"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" /> Delete Listing
-                  </button>
-                )}
-
-                {order.status === 'pending_payment' && (
-                  <div className="p-2.5 bg-slate-900/90 rounded-xl border border-slate-700 space-y-2 text-xs">
-                    <div className="bg-slate-800 p-2.5 rounded-lg border border-slate-700">
-                      <p className="text-[10px] text-slate-400 uppercase font-bold mb-0.5">Payment Instructions / Account Details:</p>
-                      <p className="text-xs text-amber-300 font-mono whitespace-pre-wrap">{order.payment_details}</p>
-                    </div>
-
-                    {/* CHAT VENDOR BUTTON */}
-                    <button
-                      onClick={() => {
-                        if (onSelectChatUser) {
-                          onSelectChatUser({
-                            user_id: isSeller ? order.buyer_id : order.seller_id,
-                            username: isSeller ? 'Buyer' : (order.profiles?.username || 'Vendor'),
-                            gender_avatar: order.profiles?.gender_avatar || 'male'
-                          });
-                        }
-                      }}
-                      className="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs py-2 rounded-xl font-bold transition"
-                    >
-                      💬 Chat with @{order.profiles?.username || 'Trader'}
-                    </button>
-
-                    {isSeller && (
-                      <button
-                        onClick={() => handleReleaseEscrow(order.id)}
-                        disabled={loading}
-                        className="w-full bg-amber-500 hover:bg-amber-400 text-slate-900 font-extrabold text-xs py-2 rounded-xl mt-1 transition"
-                      >
-                        Release Escrow GMART
-                      </button>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })
-        ) : (
-          <div className="text-center py-12 text-slate-500 text-xs">
-            No active P2P orders available.
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
+  const inChatRoom = activeTab === 'chat' && selectedChatUser !== null;
