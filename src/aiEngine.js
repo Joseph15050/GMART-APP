@@ -57,7 +57,7 @@ export async function searchLikeminds(queryText, currentUserId) {
 
   const { data, error } = await supabase.rpc('match_user_interests', {
     query_embedding: queryEmbedding,
-    match_threshold: 0.75, 
+    match_threshold: 0.55, 
     match_count: 10,
     p_user_id: currentUserId,
   });
