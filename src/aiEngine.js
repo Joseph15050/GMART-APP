@@ -56,14 +56,18 @@ export async function searchLikeminds(queryText, currentUserId) {
   const queryEmbedding = await getEmbedding(queryText);
 
   const { data, error } = await supabase.rpc('match_user_interests', {
-  query_embedding: queryEmbedding,
-  // If match_threshold isn't passed here, Supabase falls back to default!
-  match_threshold: 0.55, 
-  match_count: 10,
-  p_user_id: currentUserId,
-});
-
+    query_embedding: queryEmbedding,
+    match_threshold: 0.55, 
+    match_count: 10,
+    p_user_id: currentUserId,
+  });
 
   if (error) throw error;
-  return data || [];
+
+  // Safeguard: Filter out any result returned below 0.55 similarity
+  const filteredData = (data || []).filter((item) => {
+    return item.similarity === undefined || item.similarity >= 0.55;
+  });
+
+  return filteredData;
 }
