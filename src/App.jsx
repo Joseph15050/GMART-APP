@@ -168,7 +168,7 @@ export default function App() {
   const inChatRoom = activeTab === 'chat' && selectedChatUser !== null;
 
   return (
-    <div className="flex flex-col w-full h-screen bg-slate-900 text-slate-100 font-sans overflow-hidden">
+    <div className="flex flex-col w-full h-[100dvh] bg-slate-900 text-slate-100 font-sans overflow-hidden">
       {!session && <AuthModal onAuthSuccess={(user) => fetchProfile(user.id)} />}
 
       {/* 1. HIDE TOP HEADER WHEN IN CHAT */}
