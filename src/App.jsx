@@ -401,13 +401,15 @@ export default function App() {
                 <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                   {userLogs.map((log) => (
                     <div
-                      key={log.id}
+                      key={log.id || log.log_id}
                       className="bg-slate-900/80 p-2.5 rounded-lg border border-slate-700/60 flex justify-between items-center text-xs"
                     >
-                      <p className="text-slate-300 text-[11px] flex-1 pr-2">{log.interest_text || log.content}</p>
+                      <p className="text-slate-300 text-[11px] flex-1 pr-2">
+                        {log.log_text || log.content || log.interest_text}
+                      </p>
                       <button
-                        onClick={() => handleDeleteSingleLog(log.id)}
-                        className="text-slate-500 hover:text-red-400 transition p-1"
+                        onClick={() => handleDeleteSingleLog(log.id || log.log_id)}
+                        className="text-slate-500 hover:text-red-400 transition p-1 shrink-0"
                         title="Delete log"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
@@ -419,6 +421,7 @@ export default function App() {
                 <p className="text-[11px] text-slate-500 italic">No logged details saved yet.</p>
               )}
             </div>
+
 
             {/* MATCH RESULTS */}
             {matchResults.map((match) => (
