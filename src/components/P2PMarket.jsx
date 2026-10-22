@@ -6,6 +6,7 @@ export default function P2PMarket({ currentUserId, onBalanceChange, onSelectChat
   const [orders, setOrders] = useState([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   
+  // Sell Form States
   const [amountGmart, setAmountGmart] = useState('');
   const [pricePerUnit, setPricePerUnit] = useState('');
   const [paymentDetails, setPaymentDetails] = useState('');
@@ -31,42 +32,62 @@ export default function P2PMarket({ currentUserId, onBalanceChange, onSelectChat
     };
   }, []);
 
+  // Bulletproof 2-Stage Order Fetching
   const fetchOrders = async () => {
-    const { data, error } = await supabase
+    // 1. Fetch raw P2P orders
+    const { data: orderData, error: orderErr } = await supabase
       .from('p2p_orders')
-      .select(`
-        *,
-        profiles:seller_id (id, username, gender_avatar, updated_at)
-      `)
+      .select('*')
       .order('created_at', { ascending: false });
 
-    if (error) {
-      console.error('Error fetching P2P orders:', error);
+    if (orderErr) {
+      console.error('Error fetching P2P orders:', orderErr);
       return;
     }
 
-    if (data) {
-      // Sort online/recently active sellers first
-      const sortedOrders = data.sort((a, b) => {
-        const timeA = new Date(a.profiles?.updated_at || 0).getTime();
-        const timeB = new Date(b.profiles?.updated_at || 0).getTime();
-        const isOnlineA = Date.now() - timeA < 10 * 60 * 1000 ? 1 : 0;
-        const isOnlineB = Date.now() - timeB < 10 * 60 * 1000 ? 1 : 0;
-        return isOnlineB - isOnlineA;
-      });
-      setOrders(sortedOrders);
+    if (!orderData || orderData.length === 0) {
+      setOrders([]);
+      return;
     }
+
+    // 2. Fetch corresponding seller profiles
+    const sellerIds = [...new Set(orderData.map((o) => o.seller_id))];
+    const { data: profileData } = await supabase
+      .from('profiles')
+      .select('id, username, gender_avatar, updated_at')
+      .in('id', sellerIds);
+
+    const profileMap = new Map();
+    if (profileData) {
+      profileData.forEach((p) => profileMap.set(p.id, p));
+    }
+
+    // 3. Attach profile info and rank online/recently active vendors first
+    const combinedOrders = orderData.map((o) => ({
+      ...o,
+      profiles: profileMap.get(o.seller_id) || { username: 'Vendor', gender_avatar: 'male' },
+    }));
+
+    const sortedOrders = combinedOrders.sort((a, b) => {
+      const timeA = new Date(a.profiles?.updated_at || 0).getTime();
+      const timeB = new Date(b.profiles?.updated_at || 0).getTime();
+      const isOnlineA = Date.now() - timeA < 10 * 60 * 1000 ? 1 : 0;
+      const isOnlineB = Date.now() - timeB < 10 * 60 * 1000 ? 1 : 0;
+      return isOnlineB - isOnlineA;
+    });
+
+    setOrders(sortedOrders);
   };
 
   const handleCreateSellOrder = async () => {
     if (!amountGmart || !pricePerUnit || !paymentDetails.trim()) {
-      alert('Please fill in all required fields.');
+      alert('Please fill in required fields (Amount, Price, and Payment Instructions).');
       return;
     }
 
     setLoading(true);
 
-    // Try primary RPC with contact info
+    // Call stored RPC
     let { error } = await supabase.rpc('create_p2p_sell_order', {
       p_seller_id: currentUserId,
       p_amount: parseFloat(amountGmart),
@@ -75,7 +96,7 @@ export default function P2PMarket({ currentUserId, onBalanceChange, onSelectChat
       p_contact_info: contactInfo.trim() || null
     });
 
-    // Fallback if legacy SQL signature is active
+    // Fallback if DB function signature doesn't take contact_info parameter yet
     if (error && error.message.includes('function')) {
       const res = await supabase.rpc('create_p2p_sell_order', {
         p_seller_id: currentUserId,
@@ -102,8 +123,8 @@ export default function P2PMarket({ currentUserId, onBalanceChange, onSelectChat
   };
 
   const handleDeleteOrder = async (orderId) => {
-    if (!window.confirm('Delete this listing? Escrowed GMART will be refunded.')) return;
-    
+    if (!window.confirm('Delete this listing? Escrowed GMART will be refunded to your balance.')) return;
+
     setLoading(true);
     const { error } = await supabase.rpc('cancel_p2p_order', {
       p_order_id: orderId,
@@ -145,7 +166,7 @@ export default function P2PMarket({ currentUserId, onBalanceChange, onSelectChat
     if (error) {
       alert(error.message || 'Failed to notify vendor.');
     } else {
-      alert('Payment notification sent to vendor!');
+      alert('Payment notification sent to vendor via chat!');
       fetchOrders();
     }
   };
@@ -171,6 +192,7 @@ export default function P2PMarket({ currentUserId, onBalanceChange, onSelectChat
 
   return (
     <div className="p-3 space-y-4 overflow-y-auto pb-24 text-xs">
+      {/* HEADER */}
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-black text-slate-100">P2P Market</h2>
         <button
@@ -267,9 +289,10 @@ export default function P2PMarket({ currentUserId, onBalanceChange, onSelectChat
                     <span className="text-xs font-bold text-slate-200">
                       @{order.profiles?.username || 'Vendor'}
                     </span>
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" title="Active Seller"></span>
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" title="Active Vendor"></span>
                   </div>
 
+                  {/* CHAT VENDOR BUTTON */}
                   <button
                     onClick={() => {
                       if (onSelectChatUser) {
