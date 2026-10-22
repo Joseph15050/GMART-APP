@@ -33,7 +33,7 @@ export default function P2PMarket({ currentUserId, onBalanceChange, onSelectChat
   }, []);
 
   // Bulletproof 2-Stage Order Fetching
-  const fetchOrders = async () => {
+    const fetchOrders = async () => {
     // 1. Fetch raw P2P orders
     const { data: orderData, error: orderErr } = await supabase
       .from('p2p_orders')
@@ -50,34 +50,28 @@ export default function P2PMarket({ currentUserId, onBalanceChange, onSelectChat
       return;
     }
 
-    // 2. Fetch corresponding seller profiles
-    const sellerIds = [...new Set(orderData.map((o) => o.seller_id))];
+    // 2. Fetch all profiles to map correctly
     const { data: profileData } = await supabase
       .from('profiles')
-      .select('id, username, gender_avatar, updated_at')
-      .in('id', sellerIds);
+      .select('id, username, gender_avatar, updated_at');
 
     const profileMap = new Map();
     if (profileData) {
       profileData.forEach((p) => profileMap.set(p.id, p));
     }
 
-    // 3. Attach profile info and rank online/recently active vendors first
-    const combinedOrders = orderData.map((o) => ({
-      ...o,
-      profiles: profileMap.get(o.seller_id) || { username: 'Vendor', gender_avatar: 'male' },
-    }));
-
-    const sortedOrders = combinedOrders.sort((a, b) => {
-      const timeA = new Date(a.profiles?.updated_at || 0).getTime();
-      const timeB = new Date(b.profiles?.updated_at || 0).getTime();
-      const isOnlineA = Date.now() - timeA < 10 * 60 * 1000 ? 1 : 0;
-      const isOnlineB = Date.now() - timeB < 10 * 60 * 1000 ? 1 : 0;
-      return isOnlineB - isOnlineA;
+    // 3. Attach profile info correctly using seller_id
+    const combinedOrders = orderData.map((o) => {
+      const foundProfile = profileMap.get(o.seller_id);
+      return {
+        ...o,
+        profiles: foundProfile || { username: 'Unknown', gender_avatar: 'male' },
+      };
     });
 
-    setOrders(sortedOrders);
+    setOrders(combinedOrders);
   };
+
 
   const handleCreateSellOrder = async () => {
     if (!amountGmart || !pricePerUnit || !paymentDetails.trim()) {
