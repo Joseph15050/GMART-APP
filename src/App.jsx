@@ -68,15 +68,26 @@ export default function App() {
       .subscribe();
   };
 
-  const fetchUserLogs = async (userId) => {
-    const { data } = await supabase
+    const fetchUserLogs = async (userId) => {
+    // Tries fetching from user_interests or user_logs
+    let { data, error } = await supabase
       .from('user_interests')
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
+    if (error || !data) {
+      const fallback = await supabase
+        .from('user_logs')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+      data = fallback.data;
+    }
+
     if (data) setUserLogs(data);
   };
+
 
   const fetchRecentConversations = async (userId) => {
     const { data: msgs, error } = await supabase
@@ -138,19 +149,19 @@ export default function App() {
     }
   };
 
-  const handleDeleteSingleLog = async (logId) => {
-    const { error } = await supabase.from('user_interests').delete().eq('id', logId);
-    if (!error) {
-      setUserLogs((prev) => prev.filter((l) => l.id !== logId));
+    const handleDeleteSingleLog = async (logId) => {
+    const { error: err1 } = await supabase.from('user_interests').delete().eq('id', logId);
+    if (err1) {
+      await supabase.from('user_logs').delete().eq('id', logId);
     }
+    setUserLogs((prev) => prev.filter((l) => l.id !== logId && l.log_id !== logId));
   };
 
   const handleDeleteAllLogs = async () => {
     if (!window.confirm('Delete all your logged interests?')) return;
-    const { error } = await supabase.from('user_interests').delete().eq('user_id', session.user.id);
-    if (!error) {
-      setUserLogs([]);
-    }
+    await supabase.from('user_interests').delete().eq('user_id', session.user.id);
+    await supabase.from('user_logs').delete().eq('user_id', session.user.id);
+    setUserLogs([]);
   };
 
   const handleFindLikeminds = async () => {
