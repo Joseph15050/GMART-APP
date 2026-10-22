@@ -1,3 +1,4 @@
+import P2PMarket from './components/P2PMarket';
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import AuthModal from './components/AuthModal';
