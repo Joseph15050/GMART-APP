@@ -18,7 +18,6 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
     fetchMessages();
     markMessagesAsRead();
 
-    // Subscribe to realtime updates for this conversation
     const channel = supabase
       .channel(`public:messages:${currentUserId}_${targetId}`)
       .on(
@@ -112,9 +111,9 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-140px)] bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl relative">
-      {/* 1. STATIC HEADER */}
-      <div className="bg-slate-800 px-4 py-3 border-b border-slate-700/80 flex items-center justify-between shrink-0 z-10">
+    <div className="flex flex-col h-full w-full bg-slate-900 relative">
+      {/* 1. WHATSAPP STYLE TOP HEADER (PINNED AT TOP) */}
+      <div className="bg-slate-800 px-4 py-3 border-b border-slate-700/80 flex items-center justify-between shrink-0 shadow-md">
         <div className="flex items-center gap-3">
           <button onClick={onBack} className="p-1 text-slate-300 hover:text-emerald-400 transition">
             <ArrowLeft className="w-6 h-6" />
@@ -130,8 +129,8 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
         </div>
       </div>
 
-      {/* 2. SCROLLABLE CHAT CANVAS */}
-      <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-950/60 scrollbar-thin">
+      {/* 2. ONLY MESSAGES AREA SCROLLS */}
+      <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-950/60">
         {/* Streak Card */}
         <div className="bg-slate-800/90 p-3.5 rounded-2xl border border-slate-700/70 shadow-sm flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -163,7 +162,7 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
           </button>
         </div>
 
-        {/* Escrow Inputs Dropdown */}
+        {/* Escrow Modal */}
         {showEscrowModal && (
           <div className="bg-amber-500/10 border border-amber-500/30 p-3 rounded-2xl flex items-center gap-2">
             <input
@@ -175,7 +174,7 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
             />
             <button
               onClick={() => handleSendMessage()}
-              className="bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold px-4 py-2 rounded-xl shrink-0 transition"
+              className="bg-amber-500 text-slate-950 text-xs font-bold px-4 py-2 rounded-xl shrink-0"
             >
               Send Escrow
             </button>
@@ -223,8 +222,8 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* 3. STATIC BOTTOM INPUT BAR */}
-      <div className="p-3 bg-slate-800 border-t border-slate-700/80 flex items-center gap-2 shrink-0 z-10">
+      {/* 3. WHATSAPP STYLE BOTTOM INPUT BAR (PINNED AT VERY BOTTOM) */}
+      <div className="p-3 bg-slate-800 border-t border-slate-700/80 flex items-center gap-2 shrink-0 shadow-2xl">
         <input
           type="text"
           value={inputMessage}
