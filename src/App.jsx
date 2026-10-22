@@ -475,41 +475,44 @@ export default function App() {
           </div>
         )}
       </main>
-      
 
-      {/* BOTTOM NAV BAR */}
-      {!inChatRoom && (
-        <nav className="fixed bottom-0 left-0 right-0 bg-slate-800 border-t border-slate-700 flex items-center justify-between px-2 py-2 z-20 shadow-lg shrink-0">
-          <button
-            onClick={() => setActiveTab('matchmaking')}
-            className={`flex-1 flex flex-col items-center py-1.5 ${activeTab === 'matchmaking' ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}
-          >
-            <Search className="w-5 h-5" />
-            <span className="text-[10px] mt-1">AI Match</span>
-          </button>
-          
-          <button
-            onClick={() => setActiveTab('chat')}
-            className={`flex-1 flex flex-col items-center py-1.5 ${activeTab === 'chat' ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}
-          >
-            <MessageSquare className="w-5 h-5" />
-            <span className="text-[10px] mt-1">Chats</span>
-          </button>
-          
-          <button
-            onClick={() => setActiveTab('p2p')}
-            className={`flex-1 flex flex-col items-center py-1.5 ${activeTab === 'p2p' ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}
-          >
-            <Wallet className="w-5 h-5" />
-            <span className="text-[10px] mt-1">P2P</span>
-          </button>
-          
-          <button
-            onClick={() => setActiveTab('profile')}
-            className={`flex-1 flex flex-col items-center py-1.5 ${activeTab === 'profile' ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}
-          >
-            <User className="w-5 h-5" />
-            <span className="text-[10px] mt-1">Profile</span>
-          </button>
-        </nav>
-      )}
+{/* BOTTOM NAV BAR */}
+{!inChatRoom && (
+  <div className="fixed bottom-0 left-0 right-0 z-20 pointer-events-none">
+    <nav className="max-w-xl mx-auto pointer-events-auto bg-slate-800 border-t border-slate-700 flex items-center justify-between px-2 py-2 shadow-lg">
+      <button
+        onClick={() => setActiveTab('matchmaking')}
+        className={`flex-1 flex flex-col items-center py-1.5 ${activeTab === 'matchmaking' ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}
+      >
+        <Search className="w-5 h-5" />
+        <span className="text-[10px] mt-1">AI Match</span>
+      </button>
+      
+      <button
+        onClick={() => setActiveTab('chat')}
+        className={`flex-1 flex flex-col items-center py-1.5 ${activeTab === 'chat' ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}
+      >
+        <MessageSquare className="w-5 h-5" />
+        <span className="text-[10px] mt-1">Chats</span>
+      </button>
+      
+      <button
+        onClick={() => setActiveTab('p2p')}
+        className={`flex-1 flex flex-col items-center py-1.5 ${activeTab === 'p2p' ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}
+      >
+        <Wallet className="w-5 h-5" />
+        <span className="text-[10px] mt-1">P2P</span>
+      </button>
+      
+      <button
+        onClick={() => setActiveTab('profile')}
+        className={`flex-1 flex flex-col items-center py-1.5 ${activeTab === 'profile' ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}
+      >
+        <User className="w-5 h-5" />
+        <span className="text-[10px] mt-1">Profile</span>
+      </button>
+    </nav>
+  </div>
+)}
+
+  
