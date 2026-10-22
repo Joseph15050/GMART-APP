@@ -3,7 +3,7 @@ import { supabase } from './supabaseClient';
 import AuthModal from './components/AuthModal';
 import ChatRoom from './components/ChatRoom';
 import { logUserInterest, searchLikeminds } from './aiEngine';
-import { MessageSquare, Search, User, Wallet, LogOut, Bell, Edit2, Sparkles } from 'lucide-react';
+import { MessageSquare, Search, User, Wallet, LogOut, Bell, Edit2, Sparkles, Trash2 } from 'lucide-react';
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -17,12 +17,12 @@ export default function App() {
   const [directUsername, setDirectUsername] = useState('');
   const [selectedChatUser, setSelectedChatUser] = useState(null);
 
-  // AI Match States
+  // AI Match & Log States
   const [logInput, setLogInput] = useState('');
+  const [userLogs, setUserLogs] = useState([]);
   const [matchResults, setMatchResults] = useState([]);
   const [loadingAI, setLoadingAI] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
-  const [statusType, setStatusType] = useState('info');
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -30,6 +30,8 @@ export default function App() {
       if (session) {
         fetchProfile(session.user.id);
         fetchRecentConversations(session.user.id);
+        fetchUserLogs(session.user.id);
+        subscribeToProfileUpdates(session.user.id);
       }
     });
 
@@ -38,6 +40,8 @@ export default function App() {
       if (session) {
         fetchProfile(session.user.id);
         fetchRecentConversations(session.user.id);
+        fetchUserLogs(session.user.id);
+        subscribeToProfileUpdates(session.user.id);
       } else {
         setProfile(null);
       }
@@ -49,6 +53,29 @@ export default function App() {
   const fetchProfile = async (userId) => {
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
     if (data) setProfile(data);
+  };
+
+  const subscribeToProfileUpdates = (userId) => {
+    supabase
+      .channel(`public:profiles:${userId}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` },
+        (payload) => {
+          setProfile(payload.new);
+        }
+      )
+      .subscribe();
+  };
+
+  const fetchUserLogs = async (userId) => {
+    const { data } = await supabase
+      .from('user_interests')
+      .select('*')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false });
+
+    if (data) setUserLogs(data);
   };
 
   const fetchRecentConversations = async (userId) => {
@@ -94,6 +121,54 @@ export default function App() {
     }
   };
 
+  const handleLogData = async () => {
+    if (!logInput.trim()) return;
+    setLoadingAI(true);
+    setStatusMessage('Saving interest vector...');
+
+    try {
+      await logUserInterest(session.user.id, logInput.trim());
+      setStatusMessage('Log saved!');
+      setLogInput('');
+      fetchUserLogs(session.user.id);
+    } catch (err) {
+      setStatusMessage(err.message || 'Failed to save log.');
+    } finally {
+      setLoadingAI(false);
+    }
+  };
+
+  const handleDeleteSingleLog = async (logId) => {
+    const { error } = await supabase.from('user_interests').delete().eq('id', logId);
+    if (!error) {
+      setUserLogs((prev) => prev.filter((l) => l.id !== logId));
+    }
+  };
+
+  const handleDeleteAllLogs = async () => {
+    if (!window.confirm('Delete all your logged interests?')) return;
+    const { error } = await supabase.from('user_interests').delete().eq('user_id', session.user.id);
+    if (!error) {
+      setUserLogs([]);
+    }
+  };
+
+  const handleFindLikeminds = async () => {
+    if (!logInput.trim()) return;
+    setLoadingAI(true);
+    setStatusMessage('Searching AI vector database...');
+
+    try {
+      const results = await searchLikeminds(logInput.trim(), session.user.id);
+      setMatchResults(results);
+      setStatusMessage(results.length > 0 ? `Found ${results.length} match(es)!` : 'No close matches found.');
+    } catch (err) {
+      setStatusMessage(err.message || 'Failed to search database.');
+    } finally {
+      setLoadingAI(false);
+    }
+  };
+
   const handleStartDirectChat = async () => {
     if (!directUsername.trim()) return;
     const cleanUser = directUsername.replace('@', '').trim();
@@ -120,44 +195,6 @@ export default function App() {
     await supabase.auth.signOut();
   };
 
-  const handleLogData = async () => {
-    if (!logInput.trim()) return;
-    setLoadingAI(true);
-    setStatusMessage('Generating vector embeddings & saving log...');
-    setStatusType('info');
-
-    try {
-      await logUserInterest(session.user.id, logInput.trim());
-      setStatusMessage('Log saved!');
-      setStatusType('success');
-      setLogInput('');
-    } catch (err) {
-      setStatusMessage(err.message || 'Failed to save log.');
-      setStatusType('error');
-    } finally {
-      setLoadingAI(false);
-    }
-  };
-
-  const handleFindLikeminds = async () => {
-    if (!logInput.trim()) return;
-    setLoadingAI(true);
-    setStatusMessage('Searching AI vector database...');
-    setStatusType('info');
-
-    try {
-      const results = await searchLikeminds(logInput.trim(), session.user.id);
-      setMatchResults(results);
-      setStatusMessage(results.length > 0 ? `Found ${results.length} match(es)!` : 'No close matches found.');
-      setStatusType(results.length > 0 ? 'success' : 'info');
-    } catch (err) {
-      setStatusMessage(err.message || 'Failed to search database.');
-      setStatusType('error');
-    } finally {
-      setLoadingAI(false);
-    }
-  };
-
   const filteredConversations = conversations.filter((c) => {
     const matchesSearch = c.username.toLowerCase().includes(chatSearch.toLowerCase());
     if (chatFilter === 'unread') return matchesSearch && c.is_unread;
@@ -171,7 +208,7 @@ export default function App() {
     <div className="flex flex-col w-full h-[100dvh] bg-slate-900 text-slate-100 font-sans overflow-hidden">
       {!session && <AuthModal onAuthSuccess={(user) => fetchProfile(user.id)} />}
 
-      {/* 1. HIDE TOP HEADER WHEN IN CHAT */}
+      {/* TOP HEADER */}
       {!inChatRoom && (
         <header className="p-4 bg-slate-800 border-b border-slate-700 flex justify-between items-center sticky top-0 z-10 shadow-md shrink-0">
           <div>
@@ -187,7 +224,7 @@ export default function App() {
         </header>
       )}
 
-      {/* 2. BODY CONTENT */}
+      {/* MAIN CONTAINER */}
       <main className="flex-1 w-full max-w-xl mx-auto overflow-hidden relative flex flex-col">
         {activeTab === 'chat' && (
           selectedChatUser ? (
@@ -197,6 +234,7 @@ export default function App() {
               onBack={() => {
                 setSelectedChatUser(null);
                 fetchRecentConversations(session.user.id);
+                fetchProfile(session.user.id);
               }}
             />
           ) : (
@@ -211,11 +249,6 @@ export default function App() {
                     )}
                   </button>
                 </div>
-              </div>
-
-              <div className="bg-blue-500/10 border border-blue-500/30 p-3 rounded-2xl flex justify-between items-center text-xs">
-                <span className="text-blue-300">🔔 Get notified when friends message you</span>
-                <button className="text-blue-400 font-bold hover:underline">Turn on</button>
               </div>
 
               <div className="flex items-center gap-2 bg-slate-800 border border-slate-700 rounded-2xl px-3 py-2">
@@ -254,12 +287,6 @@ export default function App() {
                         {conversations.filter((c) => c.is_unread).length}
                       </span>
                     )}
-                  </button>
-                  <button
-                    onClick={() => setChatFilter('read')}
-                    className={`px-3 py-1 rounded-lg text-xs font-semibold ${chatFilter === 'read' ? 'bg-emerald-600 text-white' : 'text-slate-400'}`}
-                  >
-                    Read
                   </button>
                 </div>
 
@@ -305,7 +332,7 @@ export default function App() {
                   ))
                 ) : (
                   <div className="text-center py-12 text-slate-500 text-xs">
-                    No active messages found. Type `@username` above or match on "AI Match" to start chatting!
+                    No active messages found.
                   </div>
                 )}
               </div>
@@ -313,37 +340,76 @@ export default function App() {
           )
         )}
 
-        {/* AI Match Tab */}
+        {/* AI MATCH & LOGGED DETAILS TAB */}
         {activeTab === 'matchmaking' && (
           <div className="p-3 space-y-4 overflow-y-auto pb-24">
             <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-sm">
               <h2 className="text-sm font-semibold text-emerald-400 mb-1 flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4" /> AI Interest Logger & Matchmaker
+                <Sparkles className="w-4 h-4" /> AI Interest Logger
               </h2>
               <textarea
                 value={logInput}
                 onChange={(e) => setLogInput(e.target.value)}
-                placeholder="E.g. I need someone on Facebook..."
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 h-28 resize-none mb-3"
+                placeholder="Log your interest or need (e.g., Looking for a Web3 developer)..."
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 h-24 resize-none mb-3"
               ></textarea>
               <div className="flex gap-2">
                 <button
                   onClick={handleLogData}
                   disabled={loadingAI}
-                  className="flex-1 bg-emerald-600 text-white text-xs py-3 rounded-lg font-medium"
+                  className="flex-1 bg-emerald-600 text-white text-xs py-2.5 rounded-lg font-medium"
                 >
-                  Log My Data
+                  Log Detail
                 </button>
                 <button
                   onClick={handleFindLikeminds}
                   disabled={loadingAI}
-                  className="flex-1 bg-slate-700 text-slate-200 text-xs py-3 rounded-lg font-medium"
+                  className="flex-1 bg-slate-700 text-slate-200 text-xs py-2.5 rounded-lg font-medium"
                 >
-                  Find Likeminds
+                  Find Matches
                 </button>
               </div>
+              {statusMessage && <p className="text-[11px] text-amber-400 mt-2">{statusMessage}</p>}
             </div>
 
+            {/* LOGGED DETAILS SECTION */}
+            <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-3">
+              <div className="flex justify-between items-center">
+                <h3 className="text-xs font-bold text-slate-200">Your Logged Details</h3>
+                {userLogs.length > 0 && (
+                  <button
+                    onClick={handleDeleteAllLogs}
+                    className="text-[10px] text-red-400 hover:underline flex items-center gap-1 font-semibold"
+                  >
+                    <Trash2 className="w-3 h-3" /> Delete All
+                  </button>
+                )}
+              </div>
+
+              {userLogs.length > 0 ? (
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                  {userLogs.map((log) => (
+                    <div
+                      key={log.id}
+                      className="bg-slate-900/80 p-2.5 rounded-lg border border-slate-700/60 flex justify-between items-center text-xs"
+                    >
+                      <p className="text-slate-300 text-[11px] flex-1 pr-2">{log.interest_text || log.content}</p>
+                      <button
+                        onClick={() => handleDeleteSingleLog(log.id)}
+                        className="text-slate-500 hover:text-red-400 transition p-1"
+                        title="Delete log"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-[11px] text-slate-500 italic">No logged details saved yet.</p>
+              )}
+            </div>
+
+            {/* MATCH RESULTS */}
             {matchResults.map((match) => (
               <div key={match.log_id} className="bg-slate-800 p-3 rounded-xl border border-slate-700 flex justify-between items-center">
                 <div>
@@ -368,7 +434,7 @@ export default function App() {
           </div>
         )}
 
-        {/* Profile Tab */}
+        {/* PROFILE TAB */}
         {activeTab === 'profile' && profile && (
           <div className="p-3 bg-slate-800 p-4 rounded-2xl border border-slate-700 text-xs space-y-3 m-3">
             <h2 className="text-sm font-bold text-emerald-400">Account</h2>
@@ -386,7 +452,7 @@ export default function App() {
         )}
       </main>
 
-      {/* 3. HIDE BOTTOM NAV BAR WHEN IN CHAT */}
+      {/* BOTTOM NAV */}
       {!inChatRoom && (
         <nav className="fixed bottom-0 left-0 right-0 bg-slate-800 border-t border-slate-700 grid grid-cols-3 p-2 z-20 shadow-lg shrink-0">
           <button
