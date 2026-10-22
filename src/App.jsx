@@ -1,18 +1,20 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import AuthModal from './components/AuthModal';
+import ChatRoom from './components/ChatRoom';
 import { logUserInterest, searchLikeminds } from './aiEngine';
-import { MessageSquare, Search, User, Wallet, LogOut, Trash2, Send, Sparkles, CheckCircle, ShieldAlert } from 'lucide-react';
+import { MessageSquare, Search, User, Wallet, LogOut, Trash2, Sparkles } from 'lucide-react';
 
 export default function App() {
   const [session, setSession] = useState(null);
   const [profile, setProfile] = useState(null);
   const [activeTab, setActiveTab] = useState('matchmaking');
   
-  // AI Match States
+  // AI Match & Chat States
   const [logInput, setLogInput] = useState('');
   const [userLogs, setUserLogs] = useState([]);
   const [matchResults, setMatchResults] = useState([]);
+  const [selectedChatUser, setSelectedChatUser] = useState(null);
   const [loadingAI, setLoadingAI] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [statusType, setStatusType] = useState('info');
@@ -58,16 +60,15 @@ export default function App() {
     await supabase.auth.signOut();
   };
 
-  // 1. Log Interest / Activity
   const handleLogData = async () => {
     if (!logInput.trim()) return;
     setLoadingAI(true);
-    setStatusMessage('Generating AI embeddings & storing log...');
+    setStatusMessage('Generating vector embeddings & saving log...');
     setStatusType('info');
 
     try {
       await logUserInterest(session.user.id, logInput.trim());
-      setStatusMessage('Log saved successfully! Visible to AI matchmakers.');
+      setStatusMessage('Log saved! Visible to AI matchmakers.');
       setStatusType('success');
       setLogInput('');
       fetchMyLogs(session.user.id);
@@ -79,11 +80,10 @@ export default function App() {
     }
   };
 
-  // 2. Search Likeminds via Vector Similarity
   const handleFindLikeminds = async () => {
     if (!logInput.trim()) return;
     setLoadingAI(true);
-    setStatusMessage('Searching AI vector database for matching minds...');
+    setStatusMessage('Searching AI vector database...');
     setStatusType('info');
     setMatchResults([]);
 
@@ -91,7 +91,7 @@ export default function App() {
       const results = await searchLikeminds(logInput.trim(), session.user.id);
       setMatchResults(results);
       if (results.length === 0) {
-        setStatusMessage('No close matches found yet. Try broadening your prompt!');
+        setStatusMessage('No close matches found yet.');
         setStatusType('info');
       } else {
         setStatusMessage(`Found ${results.length} matching profile(s)!`);
@@ -105,21 +105,13 @@ export default function App() {
     }
   };
 
-  // 3. Delete Individual Log
-  const handleDeleteLog = async (logId) => {
-    await supabase.from('user_logs').delete().eq('id', logId);
-    fetchMyLogs(session.user.id);
-  };
-
-  // 4. Erase Entire Personal Database
-  const handleEraseAllData = async () => {
-    if (window.confirm('Are you sure you want to permanently erase all your logged data?')) {
-      await supabase.from('user_logs').delete().eq('user_id', session.user.id);
-      setUserLogs([]);
-      setMatchResults([]);
-      setStatusMessage('All personal logged data erased.');
-      setStatusType('success');
-    }
+  const startChatWithUser = (userMatch) => {
+    setSelectedChatUser({
+      user_id: userMatch.user_id,
+      username: userMatch.username,
+      gender_avatar: userMatch.gender_avatar,
+    });
+    setActiveTab('chat');
   };
 
   return (
@@ -144,12 +136,10 @@ export default function App() {
 
       {/* Main Content */}
       <main className="flex-1 p-4 pb-24 overflow-y-auto max-w-2xl mx-auto w-full">
-        {statusMessage && (
+        {statusMessage && activeTab === 'matchmaking' && (
           <div className={`mb-4 p-3 rounded-lg text-xs flex items-center gap-2 ${
             statusType === 'success' 
               ? 'bg-emerald-500/10 border border-emerald-500/30 text-emerald-400' 
-              : statusType === 'error'
-              ? 'bg-red-500/10 border border-red-500/30 text-red-400'
               : 'bg-blue-500/10 border border-blue-500/30 text-blue-400'
           }`}>
             <Sparkles className="w-4 h-4 shrink-0 animate-spin" />
@@ -159,7 +149,6 @@ export default function App() {
 
         {activeTab === 'matchmaking' && (
           <div className="space-y-4">
-            {/* AI Prompt Card */}
             <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-sm">
               <h2 className="text-sm font-semibold text-emerald-400 mb-1 flex items-center gap-1.5">
                 <Sparkles className="w-4 h-4" /> AI Interest Logger & Matchmaker
@@ -170,7 +159,7 @@ export default function App() {
               <textarea
                 value={logInput}
                 onChange={(e) => setLogInput(e.target.value)}
-                placeholder="E.g. I attended the 10X business summit in Port Harcourt, or looking for electrical installation..."
+                placeholder="E.g. I need someone on Facebook..."
                 className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 h-28 resize-none mb-3"
               ></textarea>
               <div className="flex gap-2">
@@ -191,7 +180,7 @@ export default function App() {
               </div>
             </div>
 
-            {/* AI Search Results */}
+            {/* Matched Likeminds Card */}
             {matchResults.length > 0 && (
               <div className="space-y-2">
                 <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Matched Likeminds</h3>
@@ -210,29 +199,10 @@ export default function App() {
                       <p className="text-xs text-slate-300 mt-1 line-clamp-2">"{match.log_text}"</p>
                     </div>
                     <button 
-                      onClick={() => setActiveTab('chat')}
-                      className="bg-emerald-600 hover:bg-emerald-500 text-white p-2 rounded-lg text-xs font-medium shrink-0 ml-3 flex items-center gap-1"
+                      onClick={() => startChatWithUser(match)}
+                      className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg text-xs font-medium shrink-0 ml-3 flex items-center gap-1 shadow"
                     >
                       <MessageSquare className="w-3.5 h-3.5" /> Chat
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* My Active Logs Section */}
-            {userLogs.length > 0 && (
-              <div className="space-y-2 mt-6">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">My Public Logs ({userLogs.length})</h3>
-                {userLogs.map((log) => (
-                  <div key={log.id} className="bg-slate-800/60 p-3 rounded-xl border border-slate-700/60 flex items-center justify-between">
-                    <p className="text-xs text-slate-300 pr-2">{log.log_text}</p>
-                    <button 
-                      onClick={() => handleDeleteLog(log.id)}
-                      className="text-slate-500 hover:text-red-400 p-1 transition"
-                      title="Delete log"
-                    >
-                      <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                 ))}
@@ -242,13 +212,21 @@ export default function App() {
         )}
 
         {activeTab === 'chat' && (
-          <div className="space-y-3">
-            <div className="bg-slate-800 p-3 rounded-xl border border-slate-700 text-center py-12">
-              <MessageSquare className="w-12 h-12 text-emerald-400 mx-auto mb-2 opacity-80" />
+          selectedChatUser ? (
+            <ChatRoom
+              currentUserId={session.user.id}
+              targetUser={selectedChatUser}
+              onBack={() => setSelectedChatUser(null)}
+            />
+          ) : (
+            <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 text-center py-16">
+              <MessageSquare className="w-12 h-12 text-emerald-400 mx-auto mb-3 opacity-80" />
               <h3 className="text-sm font-semibold text-slate-200">LagosLife Chatroom</h3>
-              <p className="text-xs text-slate-400 mt-1">Connect with matched users securely.</p>
+              <p className="text-xs text-slate-400 mt-1">
+                Select a matched user from the "AI Match" tab to start chatting live!
+              </p>
             </div>
-          </div>
+          )
         )}
 
         {activeTab === 'profile' && profile && (
@@ -266,23 +244,11 @@ export default function App() {
                     {profile.gender_avatar === 'female' ? '👩 Female Avatar' : '👨 Male Avatar'}
                   </span>
                 </div>
-                <div className="p-3 bg-slate-900 rounded-lg border border-slate-700 flex justify-between items-center">
-                  <span>Registered Device IP</span>
-                  <span className="text-slate-400">{profile.device_ip || 'Secured'}</span>
-                </div>
-
                 <button
                   onClick={handleLogout}
                   className="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 py-2.5 rounded-lg font-medium flex items-center justify-center gap-2 transition mt-4"
                 >
                   <LogOut className="w-4 h-4" /> Sign Out
-                </button>
-
-                <button 
-                  onClick={handleEraseAllData}
-                  className="w-full bg-red-500/10 border border-red-500/30 text-red-400 py-2.5 rounded-lg font-medium flex items-center justify-center gap-2 hover:bg-red-500/20 transition mt-2"
-                >
-                  <Trash2 className="w-4 h-4" /> Erase Personal Database
                 </button>
               </div>
             </div>
@@ -290,7 +256,7 @@ export default function App() {
         )}
       </main>
 
-      {/* Retro Bottom Navigation Bar */}
+      {/* Retro Bottom Nav */}
       <nav className="fixed bottom-0 left-0 right-0 bg-slate-800 border-t border-slate-700 grid grid-cols-3 p-2 z-20 shadow-lg">
         <button
           onClick={() => setActiveTab('matchmaking')}
