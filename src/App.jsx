@@ -121,23 +121,6 @@ export default function App() {
     }
   };
 
-  const handleClearAllChats = async () => {
-    if (!window.confirm('Are you sure you want to delete all your chat messages?')) return;
-
-    const userId = session.user.id;
-    const { error } = await supabase
-      .from('messages')
-      .delete()
-      .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`);
-
-    if (!error) {
-      setConversations([]);
-      alert('All chats cleared successfully.');
-    } else {
-      alert(error.message || 'Failed to clear chats.');
-    }
-  };
-
   const handleLogData = async () => {
     if (!logInput.trim()) return;
     setLoadingAI(true);
@@ -178,7 +161,6 @@ export default function App() {
     try {
       const rawResults = await searchLikeminds(logInput.trim(), session.user.id);
       
-      // Deduplicate results by user_id
       const uniqueUsersMap = new Map();
       rawResults.forEach((match) => {
         if (!uniqueUsersMap.has(match.user_id)) {
@@ -274,15 +256,6 @@ export default function App() {
               <div className="flex justify-between items-center">
                 <h2 className="text-xl font-black text-slate-100">Messages</h2>
                 <div className="flex items-center gap-2">
-                  {conversations.length > 0 && (
-                    <button
-                      onClick={handleClearAllChats}
-                      className="text-xs bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 px-2.5 py-1 rounded-xl flex items-center gap-1 font-semibold transition"
-                      title="Clear All Conversations"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" /> Clear All
-                    </button>
-                  )}
                   <button className="p-2 bg-slate-800 rounded-full border border-slate-700 text-slate-300 relative">
                     <Bell className="w-5 h-5" />
                     {conversations.some((c) => c.is_unread) && (
