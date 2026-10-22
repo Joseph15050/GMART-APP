@@ -3,7 +3,7 @@ import { supabase } from './supabaseClient';
 import AuthModal from './components/AuthModal';
 import ChatRoom from './components/ChatRoom';
 import { logUserInterest, searchLikeminds } from './aiEngine';
-import { MessageSquare, Search, User, Wallet, LogOut, Trash2, Sparkles } from 'lucide-react';
+import { MessageSquare, Search, User, Wallet, LogOut, Sparkles } from 'lucide-react';
 
 export default function App() {
   const [session, setSession] = useState(null);
@@ -119,9 +119,9 @@ export default function App() {
       {!session && <AuthModal onAuthSuccess={(user) => fetchProfile(user.id)} />}
 
       {/* Header */}
-      <header className="p-4 bg-slate-800 border-b border-slate-700 flex justify-between items-center sticky top-0 z-10 shadow-md">
+      <header className="p-4 bg-slate-800 border-b border-slate-700 flex justify-between items-center sticky top-0 z-10 shadow-md shrink-0">
         <div>
-          <h1 className="font-bold text-emerald-400 text-base tracking-wide">GMART APP</h1>
+          <h1 className="font-bold text-emerald-400 text-base tracking-wide">GINGOMART</h1>
           <p className="text-[11px] text-slate-400">
             {profile ? `@${profile.username}` : 'Matchmaking & Escrow'}
           </p>
@@ -135,7 +135,7 @@ export default function App() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 p-3 max-w-2xl mx-auto w-full overflow-hidden flex flex-col">
+      <main className="flex-1 p-3 max-w-2xl mx-auto w-full overflow-y-auto pb-20">
         {statusMessage && activeTab === 'matchmaking' && (
           <div className={`mb-4 p-3 rounded-lg text-xs flex items-center gap-2 ${
             statusType === 'success' 
@@ -144,6 +144,70 @@ export default function App() {
           }`}>
             <Sparkles className="w-4 h-4 shrink-0 animate-spin" />
             <span>{statusMessage}</span>
+          </div>
+        )}
+
+        {activeTab === 'matchmaking' && (
+          <div className="space-y-4">
+            <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-sm">
+              <h2 className="text-sm font-semibold text-emerald-400 mb-1 flex items-center gap-1.5">
+                <Sparkles className="w-4 h-4" /> AI Interest Logger & Matchmaker
+              </h2>
+              <p className="text-xs text-slate-300 mb-3">
+                Log what you do, or search for users with matching skills and interests.
+              </p>
+              <textarea
+                value={logInput}
+                onChange={(e) => setLogInput(e.target.value)}
+                placeholder="E.g. I need someone on Facebook..."
+                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 h-28 resize-none mb-3"
+              ></textarea>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleLogData}
+                  disabled={loadingAI}
+                  className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs py-3 rounded-lg font-medium transition shadow disabled:opacity-50"
+                >
+                  Log My Data
+                </button>
+                <button
+                  onClick={handleFindLikeminds}
+                  disabled={loadingAI}
+                  className="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs py-3 rounded-lg font-medium transition shadow disabled:opacity-50"
+                >
+                  Find Likeminds
+                </button>
+              </div>
+            </div>
+
+            {/* Matched Likeminds Card */}
+            {matchResults.length > 0 && (
+              <div className="space-y-2">
+                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Matched Likeminds</h3>
+                {matchResults.map((match) => (
+                  <div key={match.log_id} className="bg-slate-800 p-3 rounded-xl border border-slate-700 flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-emerald-400">@{match.username}</span>
+                        <span className="text-[10px] bg-slate-700 px-2 py-0.5 rounded text-slate-300">
+                          {match.gender_avatar === 'female' ? '👩 Female' : '👨 Male'}
+                        </span>
+                        <span className="text-[10px] text-amber-400 font-mono">
+                          {(match.similarity * 100).toFixed(0)}% Match
+                        </span>
+                      </div>
+                      <p className="text-xs text-slate-300 mt-1 line-clamp-2">"{match.log_text}"</p>
+                    </div>
+                    <button 
+                      onClick={() => startChatWithUser(match)}
+                      className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg text-xs font-medium shrink-0 ml-3 flex items-center gap-1 shadow"
+                    >
+                      <MessageSquare className="w-3.5 h-3.5" /> Chat
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -189,55 +253,6 @@ export default function App() {
                   </p>
                 </div>
               )}
-            </div>
-          )
-        )}
-
-            {/* Matched Likeminds Card */}
-            {matchResults.length > 0 && (
-              <div className="space-y-2">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">Matched Likeminds</h3>
-                {matchResults.map((match) => (
-                  <div key={match.log_id} className="bg-slate-800 p-3 rounded-xl border border-slate-700 flex items-center justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-emerald-400">@{match.username}</span>
-                        <span className="text-[10px] bg-slate-700 px-2 py-0.5 rounded text-slate-300">
-                          {match.gender_avatar === 'female' ? '👩 Female' : '👨 Male'}
-                        </span>
-                        <span className="text-[10px] text-amber-400 font-mono">
-                          {(match.similarity * 100).toFixed(0)}% Match
-                        </span>
-                      </div>
-                      <p className="text-xs text-slate-300 mt-1 line-clamp-2">"{match.log_text}"</p>
-                    </div>
-                    <button 
-                      onClick={() => startChatWithUser(match)}
-                      className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-2 rounded-lg text-xs font-medium shrink-0 ml-3 flex items-center gap-1 shadow"
-                    >
-                      <MessageSquare className="w-3.5 h-3.5" /> Chat
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {activeTab === 'chat' && (
-          selectedChatUser ? (
-            <ChatRoom
-              currentUserId={session.user.id}
-              targetUser={selectedChatUser}
-              onBack={() => setSelectedChatUser(null)}
-            />
-          ) : (
-            <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 text-center py-16">
-              <MessageSquare className="w-12 h-12 text-emerald-400 mx-auto mb-3 opacity-80" />
-              <h3 className="text-sm font-semibold text-slate-200">LagosLife Chatroom</h3>
-              <p className="text-xs text-slate-400 mt-1">
-                Select a matched user from the "AI Match" tab to start chatting live!
-              </p>
             </div>
           )
         )}
