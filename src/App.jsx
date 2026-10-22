@@ -164,21 +164,37 @@ export default function App() {
     setUserLogs([]);
   };
 
-  const handleFindLikeminds = async () => {
+    const handleFindLikeminds = async () => {
     if (!logInput.trim()) return;
     setLoadingAI(true);
     setStatusMessage('Searching AI vector database...');
 
     try {
-      const results = await searchLikeminds(logInput.trim(), session.user.id);
-      setMatchResults(results);
-      setStatusMessage(results.length > 0 ? `Found ${results.length} match(es)!` : 'No close matches found.');
+      const rawResults = await searchLikeminds(logInput.trim(), session.user.id);
+      
+      // Keep only 1 top-matching result per unique user
+      const uniqueUsersMap = new Map();
+      rawResults.forEach((match) => {
+        if (!uniqueUsersMap.has(match.user_id)) {
+          uniqueUsersMap.set(match.user_id, match);
+        }
+      });
+
+      const deduplicatedResults = Array.from(uniqueUsersMap.values());
+
+      setMatchResults(deduplicatedResults);
+      setStatusMessage(
+        deduplicatedResults.length > 0 
+          ? `Found ${deduplicatedResults.length} match(es)!` 
+          : 'No close matches found.'
+      );
     } catch (err) {
       setStatusMessage(err.message || 'Failed to search database.');
     } finally {
       setLoadingAI(false);
     }
   };
+
 
   const handleStartDirectChat = async () => {
     if (!directUsername.trim()) return;
