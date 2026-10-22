@@ -4,25 +4,28 @@ const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
 
 export async function getEmbedding(text) {
   if (!GEMINI_API_KEY) {
-    throw new Error('Gemini API key is not defined in environment variables.');
+    throw new Error('Gemini API key is not defined in Vercel environment variables.');
   }
 
-  // Standard text-embedding-004 returns native 768 dimensions
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-001:embedContent?key=${GEMINI_API_KEY}`;
+  // Active Gemini Embedding API model (replacing deprecated text-embedding-004)
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${GEMINI_API_KEY}`;
 
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'models/text-embedding-004',
-      content: { parts: [{ text }] }
+      model: 'models/gemini-embedding-001',
+      content: {
+        parts: [{ text }]
+      },
+      output_dimensionality: 768 // Enforces 768-dim output to fit your Supabase pgvector schema
     }),
   });
 
   const data = await response.json();
 
   if (!response.ok) {
-    console.error('Gemini Error:', data);
+    console.error('Gemini API Error details:', data);
     throw new Error(data.error?.message || `API error ${response.status}`);
   }
 
@@ -30,7 +33,7 @@ export async function getEmbedding(text) {
     return data.embedding.values;
   }
 
-  throw new Error('No embedding returned from Gemini API.');
+  throw new Error('No embedding vector returned from Gemini API.');
 }
 
 export async function logUserInterest(userId, logText) {
