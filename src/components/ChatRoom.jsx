@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
-import { ArrowLeft, Send, Trash2, Lock, ShieldAlert } from 'lucide-react';
+import { ArrowLeft, Send, Trash2, Wallet } from 'lucide-react';
 
 export default function ChatRoom({ currentUserId, targetUser, onBack }) {
   const [messages, setMessages] = useState([]);
   const [newMessage, setNewMessage] = useState('');
   const [isBlocked, setIsBlocked] = useState(false);
-  const [iBlockedTarget, setIBlockedTarget] = useState(false);
+  const [loadingTransfer, setLoadingTransfer] = useState(false);
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -57,11 +57,8 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
 
     if (data && data.length > 0) {
       setIsBlocked(true);
-      const IBlocked = data.some((b) => b.blocker_id === currentUserId);
-      setIBlockedTarget(IBlocked);
     } else {
       setIsBlocked(false);
-      setIBlockedTarget(false);
     }
   };
 
@@ -96,6 +93,32 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
 
     if (error) {
       alert(error.message || 'Failed to send message.');
+    }
+  };
+
+  const handleSendGMART = async () => {
+    const amountStr = prompt(`Enter GMART amount to send to @${targetUser.username}:`);
+    if (!amountStr) return;
+
+    const amount = parseFloat(amountStr);
+    if (isNaN(amount) || amount <= 0) {
+      alert('Please enter a valid amount.');
+      return;
+    }
+
+    setLoadingTransfer(true);
+    const { error } = await supabase.rpc('transfer_gmart', {
+      p_sender_id: currentUserId,
+      p_receiver_id: targetUser.user_id,
+      p_amount: amount,
+    });
+    setLoadingTransfer(false);
+
+    if (error) {
+      alert(error.message || 'Transfer failed.');
+    } else {
+      alert(`Successfully sent ${amount} GMART to @${targetUser.username}!`);
+      fetchMessages();
     }
   };
 
@@ -144,7 +167,6 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
           </div>
         </div>
 
-        {/* CLEAR CHAT BUTTON */}
         <button
           onClick={handleClearChatHistory}
           className="text-xs text-red-400 hover:bg-red-500/10 px-2.5 py-1 rounded-lg border border-red-500/20 flex items-center gap-1 font-semibold transition"
@@ -190,8 +212,17 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* INPUT BAR */}
-      <form onSubmit={handleSendMessage} className="p-3 bg-slate-800 border-t border-slate-700 flex gap-2">
+      {/* INPUT BAR WITH SEND GMART BUTTON */}
+      <form onSubmit={handleSendMessage} className="p-3 bg-slate-800 border-t border-slate-700 flex gap-2 items-center">
+        <button
+          type="button"
+          onClick={handleSendGMART}
+          disabled={loadingTransfer || isBlocked}
+          className="bg-amber-500/10 border border-amber-500/30 text-amber-400 p-2 rounded-xl hover:bg-amber-500/20 transition disabled:opacity-50"
+          title="Send GMART coins"
+        >
+          <Wallet className="w-4 h-4" />
+        </button>
         <input
           type="text"
           value={newMessage}
