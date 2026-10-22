@@ -40,13 +40,18 @@ export default function P2PMarket({ currentUserId, onBalanceChange, onSelectChat
       `)
       .order('created_at', { ascending: false });
 
-    if (!error && data) {
-      // Rank sellers: Online/recently active users first
+    if (error) {
+      console.error('Error fetching P2P orders:', error);
+      return;
+    }
+
+    if (data) {
+      // Sort online/recently active sellers first
       const sortedOrders = data.sort((a, b) => {
         const timeA = new Date(a.profiles?.updated_at || 0).getTime();
         const timeB = new Date(b.profiles?.updated_at || 0).getTime();
-        const isOnlineA = Date.now() - timeA < 5 * 60 * 1000 ? 1 : 0;
-        const isOnlineB = Date.now() - timeB < 5 * 60 * 1000 ? 1 : 0;
+        const isOnlineA = Date.now() - timeA < 10 * 60 * 1000 ? 1 : 0;
+        const isOnlineB = Date.now() - timeB < 10 * 60 * 1000 ? 1 : 0;
         return isOnlineB - isOnlineA;
       });
       setOrders(sortedOrders);
@@ -54,19 +59,33 @@ export default function P2PMarket({ currentUserId, onBalanceChange, onSelectChat
   };
 
   const handleCreateSellOrder = async () => {
-    if (!amountGmart || !pricePerUnit || !paymentDetails.trim() || !contactInfo.trim()) {
-      alert('Please fill in all fields including payment instructions and contact info.');
+    if (!amountGmart || !pricePerUnit || !paymentDetails.trim()) {
+      alert('Please fill in all required fields.');
       return;
     }
 
     setLoading(true);
-    const { error } = await supabase.rpc('create_p2p_sell_order', {
+
+    // Try primary RPC with contact info
+    let { error } = await supabase.rpc('create_p2p_sell_order', {
       p_seller_id: currentUserId,
       p_amount: parseFloat(amountGmart),
       p_price_per_unit: parseFloat(pricePerUnit),
       p_payment_details: paymentDetails.trim(),
-      p_contact_info: contactInfo.trim()
+      p_contact_info: contactInfo.trim() || null
     });
+
+    // Fallback if legacy SQL signature is active
+    if (error && error.message.includes('function')) {
+      const res = await supabase.rpc('create_p2p_sell_order', {
+        p_seller_id: currentUserId,
+        p_amount: parseFloat(amountGmart),
+        p_price_per_unit: parseFloat(pricePerUnit),
+        p_payment_details: paymentDetails.trim()
+      });
+      error = res.error;
+    }
+
     setLoading(false);
 
     if (error) {
@@ -126,7 +145,7 @@ export default function P2PMarket({ currentUserId, onBalanceChange, onSelectChat
     if (error) {
       alert(error.message || 'Failed to notify vendor.');
     } else {
-      alert('Payment notification sent to vendor via chat!');
+      alert('Payment notification sent to vendor!');
       fetchOrders();
     }
   };
@@ -248,7 +267,7 @@ export default function P2PMarket({ currentUserId, onBalanceChange, onSelectChat
                     <span className="text-xs font-bold text-slate-200">
                       @{order.profiles?.username || 'Vendor'}
                     </span>
-                    <span className="w-2 h-2 rounded-full bg-emerald-500" title="Online Rank"></span>
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" title="Active Seller"></span>
                   </div>
 
                   <button
