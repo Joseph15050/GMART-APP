@@ -114,8 +114,8 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
   };
 
   return (
-    <div className="flex flex-col h-[100dvh] w-full bg-slate-900 overflow-hidden">
-      {/* 1. WHATSAPP STYLE TOP HEADER (Shrink-0) */}
+    <div className="flex flex-col h-full w-full bg-slate-900 overflow-hidden">
+      {/* 1. WHATSAPP STYLE TOP HEADER */}
       <div className="bg-slate-800 px-4 py-3 border-b border-slate-700/80 flex items-center justify-between shrink-0 shadow-md z-10">
         <div className="flex items-center gap-3">
           <button onClick={onBack} className="p-1 text-slate-300 hover:text-emerald-400 transition">
@@ -132,7 +132,7 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
         </div>
       </div>
 
-      {/* 2. SCROLLABLE MESSAGES AREA (Flex-1) */}
+      {/* 2. SCROLLABLE MESSAGES AREA */}
       <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-950/60">
         {/* Action Pills */}
         <div className="flex gap-2 justify-center py-1">
@@ -207,7 +207,7 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* 3. PINNED BOTTOM INPUT BAR (Shrink-0 docked at the bottom of flex container) */}
+      {/* 3. PINNED BOTTOM INPUT BAR */}
       <div className="p-3 bg-slate-800 border-t border-slate-700/80 flex items-center gap-2 shrink-0 shadow-2xl z-20">
         <input
           type="text"
