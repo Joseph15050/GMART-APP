@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
-import { ArrowLeft, Send, Lock, Flame } from 'lucide-react';
+import { ArrowLeft, Send, Lock } from 'lucide-react';
 
 export default function ChatRoom({ currentUserId, targetUser, onBack }) {
   const [messages, setMessages] = useState([]);
@@ -111,9 +111,9 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
   };
 
   return (
-    <div className="flex flex-col h-full w-full bg-slate-900 relative">
-      {/* 1. WHATSAPP STYLE TOP HEADER (PINNED AT TOP) */}
-      <div className="bg-slate-800 px-4 py-3 border-b border-slate-700/80 flex items-center justify-between shrink-0 shadow-md">
+    <div className="flex flex-col h-screen w-full bg-slate-900 relative overflow-hidden">
+      {/* 1. WHATSAPP STYLE TOP HEADER */}
+      <div className="bg-slate-800 px-4 py-3 border-b border-slate-700/80 flex items-center justify-between shrink-0 shadow-md z-10">
         <div className="flex items-center gap-3">
           <button onClick={onBack} className="p-1 text-slate-300 hover:text-emerald-400 transition">
             <ArrowLeft className="w-6 h-6" />
@@ -129,28 +129,10 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
         </div>
       </div>
 
-      {/* 2. ONLY MESSAGES AREA SCROLLS */}
-      <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-950/60">
-        {/* Streak Card */}
-        <div className="bg-slate-800/90 p-3.5 rounded-2xl border border-slate-700/70 shadow-sm flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full bg-orange-500/10 flex items-center justify-center text-orange-500">
-              <Flame className="w-6 h-6 fill-orange-500" />
-            </div>
-            <div>
-              <h4 className="text-xs font-bold text-slate-100">Start a streak</h4>
-              <p className="text-[10px] text-slate-400">
-                Both of you do something together on the same day, every day
-              </p>
-            </div>
-          </div>
-          <button className="text-[11px] text-emerald-400 font-bold shrink-0">
-            What counts?
-          </button>
-        </div>
-
+      {/* 2. SCROLLABLE MESSAGES AREA */}
+      <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-950/60 pb-20">
         {/* Action Pills */}
-        <div className="flex gap-2 justify-center">
+        <div className="flex gap-2 justify-center pt-2">
           <button className="bg-slate-800 text-slate-200 border border-slate-700 px-3.5 py-1.5 rounded-full text-xs font-semibold">
             Profile
           </button>
@@ -222,8 +204,8 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* 3. WHATSAPP STYLE BOTTOM INPUT BAR (PINNED AT VERY BOTTOM) */}
-      <div className="p-3 bg-slate-800 border-t border-slate-700/80 flex items-center gap-2 shrink-0 shadow-2xl">
+      {/* 3. PINNED BOTTOM INPUT BAR (Zero gap from footer) */}
+      <div className="absolute bottom-0 left-0 right-0 p-3 bg-slate-800 border-t border-slate-700/80 flex items-center gap-2 shadow-2xl z-20">
         <input
           type="text"
           value={inputMessage}
