@@ -9,27 +9,26 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
   const [loading, setLoading] = useState(false);
   const messagesEndRef = useRef(null);
 
+  const targetId = targetUser.user_id || targetUser.id;
+
   useEffect(() => {
-    if (!currentUserId || !targetUser?.user_id) return;
+    if (!currentUserId || !targetId) return;
 
     fetchMessages();
 
-    // Subscribe to Supabase Realtime changes
     const channel = supabase
-      .channel(`chat_${currentUserId}_${targetUser.user_id}`)
+      .channel(`chat_${currentUserId}_${targetId}`)
       .on(
         'postgres_changes',
         { event: 'INSERT', schema: 'public', table: 'messages' },
         (payload) => {
           const newMsg = payload.new;
-          // Check if message belongs to this conversation
           const isRelevant =
-            (newMsg.sender_id === currentUserId && newMsg.receiver_id === targetUser.user_id) ||
-            (newMsg.sender_id === targetUser.user_id && newMsg.receiver_id === currentUserId);
+            (newMsg.sender_id === currentUserId && newMsg.receiver_id === targetId) ||
+            (newMsg.sender_id === targetId && newMsg.receiver_id === currentUserId);
 
           if (isRelevant) {
             setMessages((prev) => {
-              // Avoid duplicate messages if already added
               if (prev.some((m) => m.id === newMsg.id)) return prev;
               return [...prev, newMsg];
             });
@@ -41,7 +40,7 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [currentUserId, targetUser]);
+  }, [currentUserId, targetId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -51,9 +50,7 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
     const { data, error } = await supabase
       .from('messages')
       .select('*')
-      .or(
-        `and(sender_id.eq.${currentUserId},receiver_id.eq.${targetUser.user_id}),and(sender_id.eq.${targetUser.user_id},receiver_id.eq.${currentUserId})`
-      )
+      .or(`and(sender_id.eq.${currentUserId},receiver_id.eq.${targetId}),and(sender_id.eq.${targetId},receiver_id.eq.${currentUserId})`)
       .order('created_at', { ascending: true });
 
     if (error) {
@@ -77,7 +74,7 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
         .insert([
           {
             sender_id: currentUserId,
-            receiver_id: targetUser.user_id,
+            receiver_id: targetId,
             message_text: msgText,
             amount: amountVal,
             is_escrow: amountVal > 0,
@@ -90,7 +87,6 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
       setInputMessage('');
       setSendAmount('');
 
-      // Optimistically append message if Realtime hasn't pushed it yet
       if (data && data[0]) {
         setMessages((prev) => {
           if (prev.some((m) => m.id === data[0].id)) return prev;
@@ -105,9 +101,9 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
   };
 
   return (
-    <div className="flex flex-col h-[78vh] bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
-      {/* Header */}
-      <div className="bg-slate-800 p-3 border-b border-slate-700 flex items-center justify-between">
+    <div className="flex flex-col h-[calc(100vh-140px)] bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+      {/* Fixed Header */}
+      <div className="bg-slate-800 p-3 border-b border-slate-700 flex items-center justify-between shrink-0">
         <div className="flex items-center gap-2">
           <button onClick={onBack} className="p-1 text-slate-400 hover:text-emerald-400">
             <ArrowLeft className="w-5 h-5" />
@@ -124,7 +120,7 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
         </div>
       </div>
 
-      {/* Messages List */}
+      {/* Scrollable Messages Area */}
       <div className="flex-1 p-3 overflow-y-auto space-y-3">
         {messages.length === 0 ? (
           <div className="text-center py-12 text-xs text-slate-500">
@@ -160,18 +156,18 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Input Footer */}
-      <form onSubmit={handleSendMessage} className="p-2 bg-slate-800 border-t border-slate-700 flex flex-col gap-2">
+      {/* Fixed Sticky Input Bar */}
+      <form onSubmit={handleSendMessage} className="p-2 bg-slate-800 border-t border-slate-700 flex flex-col gap-2 shrink-0">
         <div className="flex gap-2 items-center">
-          <div className="relative w-28 shrink-0">
-            <span className="absolute left-2.5 top-2 text-[10px] text-slate-400 font-bold">GMART:</span>
+          <div className="relative w-24 shrink-0">
+            <span className="absolute left-2 top-2 text-[9px] text-slate-400 font-bold">GMART:</span>
             <input
               type="number"
               step="0.01"
               value={sendAmount}
               onChange={(e) => setSendAmount(e.target.value)}
               placeholder="0.00"
-              className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-12 pr-2 py-1.5 text-xs text-amber-400 font-bold focus:outline-none focus:border-amber-500"
+              className="w-full bg-slate-900 border border-slate-700 rounded-lg pl-11 pr-1.5 py-1.5 text-xs text-amber-400 font-bold focus:outline-none focus:border-amber-500"
             />
           </div>
           <input
