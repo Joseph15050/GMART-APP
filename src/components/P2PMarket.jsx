@@ -32,9 +32,11 @@ export default function P2PMarket({ currentUserId, onBalanceChange, onSelectChat
   }, []);
 
   const fetchOrders = async () => {
+    // 1. Fetch only active orders (excluding completed or cancelled trades)
     const { data: orderData, error: orderErr } = await supabase
       .from('p2p_orders')
       .select('*')
+      .in('status', ['open', 'pending_payment', 'payment_sent'])
       .order('created_at', { ascending: false });
 
     if (orderErr) {
@@ -47,15 +49,19 @@ export default function P2PMarket({ currentUserId, onBalanceChange, onSelectChat
       return;
     }
 
+    // 2. Fetch associated seller profiles
+    const sellerIds = [...new Set(orderData.map((o) => o.seller_id))];
     const { data: profileData } = await supabase
       .from('profiles')
-      .select('id, username, gender_avatar, updated_at');
+      .select('id, username, gender_avatar, updated_at')
+      .in('id', sellerIds);
 
     const profileMap = new Map();
     if (profileData) {
       profileData.forEach((p) => profileMap.set(p.id, p));
     }
 
+    // 3. Attach profile info and sort active sellers
     const combinedOrders = orderData.map((o) => ({
       ...o,
       profiles: profileMap.get(o.seller_id) || { username: 'Vendor', gender_avatar: 'male' },
@@ -71,6 +77,7 @@ export default function P2PMarket({ currentUserId, onBalanceChange, onSelectChat
 
     setOrders(sortedOrders);
   };
+
 
   const handleCreateSellOrder = async () => {
     if (!amountGmart || !pricePerUnit || !paymentDetails.trim()) {
