@@ -6,7 +6,6 @@ export default function P2PMarket({ currentUserId, onBalanceChange, onSelectChat
   const [orders, setOrders] = useState([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   
-  // Sell Form States
   const [amountGmart, setAmountGmart] = useState('');
   const [pricePerUnit, setPricePerUnit] = useState('');
   const [paymentDetails, setPaymentDetails] = useState('');
@@ -32,9 +31,7 @@ export default function P2PMarket({ currentUserId, onBalanceChange, onSelectChat
     };
   }, []);
 
-  // Bulletproof 2-Stage Order Fetching
-    const fetchOrders = async () => {
-    // 1. Fetch raw P2P orders
+  const fetchOrders = async () => {
     const { data: orderData, error: orderErr } = await supabase
       .from('p2p_orders')
       .select('*')
@@ -50,7 +47,6 @@ export default function P2PMarket({ currentUserId, onBalanceChange, onSelectChat
       return;
     }
 
-    // 2. Fetch all profiles to map correctly
     const { data: profileData } = await supabase
       .from('profiles')
       .select('id, username, gender_avatar, updated_at');
@@ -60,18 +56,21 @@ export default function P2PMarket({ currentUserId, onBalanceChange, onSelectChat
       profileData.forEach((p) => profileMap.set(p.id, p));
     }
 
-    // 3. Attach profile info correctly using seller_id
-    const combinedOrders = orderData.map((o) => {
-      const foundProfile = profileMap.get(o.seller_id);
-      return {
-        ...o,
-        profiles: foundProfile || { username: 'Unknown', gender_avatar: 'male' },
-      };
+    const combinedOrders = orderData.map((o) => ({
+      ...o,
+      profiles: profileMap.get(o.seller_id) || { username: 'Vendor', gender_avatar: 'male' },
+    }));
+
+    const sortedOrders = combinedOrders.sort((a, b) => {
+      const timeA = new Date(a.profiles?.updated_at || 0).getTime();
+      const timeB = new Date(b.profiles?.updated_at || 0).getTime();
+      const isOnlineA = Date.now() - timeA < 10 * 60 * 1000 ? 1 : 0;
+      const isOnlineB = Date.now() - timeB < 10 * 60 * 1000 ? 1 : 0;
+      return isOnlineB - isOnlineA;
     });
 
-    setOrders(combinedOrders);
+    setOrders(sortedOrders);
   };
-
 
   const handleCreateSellOrder = async () => {
     if (!amountGmart || !pricePerUnit || !paymentDetails.trim()) {
@@ -81,7 +80,6 @@ export default function P2PMarket({ currentUserId, onBalanceChange, onSelectChat
 
     setLoading(true);
 
-    // Call stored RPC
     let { error } = await supabase.rpc('create_p2p_sell_order', {
       p_seller_id: currentUserId,
       p_amount: parseFloat(amountGmart),
@@ -90,7 +88,6 @@ export default function P2PMarket({ currentUserId, onBalanceChange, onSelectChat
       p_contact_info: contactInfo.trim() || null
     });
 
-    // Fallback if DB function signature doesn't take contact_info parameter yet
     if (error && error.message.includes('function')) {
       const res = await supabase.rpc('create_p2p_sell_order', {
         p_seller_id: currentUserId,
@@ -160,7 +157,7 @@ export default function P2PMarket({ currentUserId, onBalanceChange, onSelectChat
     if (error) {
       alert(error.message || 'Failed to notify vendor.');
     } else {
-      alert('Payment notification sent to vendor via chat!');
+      alert('Payment marked as sent! Vendor notified.');
       fetchOrders();
     }
   };
@@ -186,7 +183,6 @@ export default function P2PMarket({ currentUserId, onBalanceChange, onSelectChat
 
   return (
     <div className="p-3 space-y-4 overflow-y-auto pb-24 text-xs">
-      {/* HEADER */}
       <div className="flex justify-between items-center">
         <h2 className="text-xl font-black text-slate-100">P2P Market</h2>
         <button
@@ -286,7 +282,6 @@ export default function P2PMarket({ currentUserId, onBalanceChange, onSelectChat
                     <span className="w-2 h-2 rounded-full bg-emerald-500" title="Active Vendor"></span>
                   </div>
 
-                  {/* CHAT VENDOR BUTTON */}
                   <button
                     onClick={() => {
                       if (onSelectChatUser) {
@@ -349,7 +344,7 @@ export default function P2PMarket({ currentUserId, onBalanceChange, onSelectChat
                       )}
                     </div>
 
-                    {/* BUYER BUTTON: "I HAVE PAID" */}
+                    {/* BUYER CONTROLS */}
                     {isBuyer && order.status === 'pending_payment' && (
                       <button
                         onClick={() => handleMarkPaid(order.id)}
@@ -361,26 +356,34 @@ export default function P2PMarket({ currentUserId, onBalanceChange, onSelectChat
                     )}
 
                     {isBuyer && order.status === 'payment_sent' && (
-                      <div className="text-center py-1 text-amber-400 font-bold text-[11px]">
-                        ⏳ Payment notification sent. Waiting for vendor to release escrow...
+                      <div className="text-center py-2 bg-amber-500/10 border border-amber-500/20 rounded-xl text-amber-400 font-bold text-[11px]">
+                        ⏳ Payment notification sent! Waiting for vendor to verify & release escrow.
                       </div>
                     )}
 
-                    {/* SELLER BUTTONS */}
+                    {/* SELLER CONTROLS */}
                     {isSeller && (
-                      <div className="space-y-1.5">
-                        {order.status === 'payment_sent' && (
-                          <p className="text-[11px] text-emerald-400 font-bold text-center">
-                            🔔 Buyer marked payment as sent! Please verify your bank account.
-                          </p>
+                      <div>
+                        {order.status === 'pending_payment' && (
+                          <div className="text-center py-2 bg-slate-800 border border-slate-700 rounded-xl text-slate-400 text-[11px]">
+                            ⏳ Buyer initiated order. Awaiting buyer payment notification...
+                          </div>
                         )}
-                        <button
-                          onClick={() => handleReleaseEscrow(order.id)}
-                          disabled={loading}
-                          className="w-full bg-amber-500 hover:bg-amber-400 text-slate-900 font-extrabold text-xs py-2 rounded-xl transition"
-                        >
-                          Release Escrow GMART
-                        </button>
+
+                        {order.status === 'payment_sent' && (
+                          <div className="space-y-2">
+                            <p className="text-[11px] text-emerald-400 font-bold text-center">
+                              🔔 Buyer marked payment as sent! Verify your bank account before releasing.
+                            </p>
+                            <button
+                              onClick={() => handleReleaseEscrow(order.id)}
+                              disabled={loading}
+                              className="w-full bg-amber-500 hover:bg-amber-400 text-slate-900 font-extrabold text-xs py-2.5 rounded-xl transition"
+                            >
+                              Release Escrow GMART
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
