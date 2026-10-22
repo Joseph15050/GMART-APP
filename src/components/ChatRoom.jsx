@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
-import { ArrowLeft, Send, Lock } from 'lucide-react';
+import { ArrowLeft, Send, Lock, ShieldOff } from 'lucide-react';
 
 export default function ChatRoom({ currentUserId, targetUser, onBack }) {
   const [messages, setMessages] = useState([]);
@@ -8,6 +8,8 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
   const [sendAmount, setSendAmount] = useState('');
   const [loading, setLoading] = useState(false);
   const [showEscrowModal, setShowEscrowModal] = useState(false);
+  const [isBlocked, setIsBlocked] = useState(false);
+  const [hasBlockedMe, setHasBlockedMe] = useState(false);
   const messagesEndRef = useRef(null);
 
   const targetId = targetUser.user_id || targetUser.id;
@@ -15,6 +17,7 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
   useEffect(() => {
     if (!currentUserId || !targetId) return;
 
+    checkBlockStatus();
     fetchMessages();
     markMessagesAsRead();
 
@@ -50,6 +53,59 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  const checkBlockStatus = async () => {
+    // Check if I blocked target
+    const { data: iBlocked } = await supabase
+      .from('blocked_users')
+      .select('*')
+      .eq('blocker_id', currentUserId)
+      .eq('blocked_id', targetId)
+      .single();
+
+    if (iBlocked) setIsBlocked(true);
+
+    // Check if target blocked me
+    const { data: targetBlockedMe } = await supabase
+      .from('blocked_users')
+      .select('*')
+      .eq('blocker_id', targetId)
+      .eq('blocked_id', currentUserId)
+      .single();
+
+    if (targetBlockedMe) setHasBlockedMe(true);
+  };
+
+  const handleBlockUser = async () => {
+    if (!window.confirm(`Are you sure you want to block @${targetUser.username}?`)) return;
+
+    try {
+      const { error } = await supabase.from('blocked_users').insert([
+        { blocker_id: currentUserId, blocked_id: targetId },
+      ]);
+      if (error) throw error;
+      setIsBlocked(true);
+      alert(`@${targetUser.username} has been blocked.`);
+    } catch (err) {
+      alert(err.message || 'Failed to block user');
+    }
+  };
+
+  const handleUnblockUser = async () => {
+    try {
+      const { error } = await supabase
+        .from('blocked_users')
+        .delete()
+        .eq('blocker_id', currentUserId)
+        .eq('blocked_id', targetId);
+
+      if (error) throw error;
+      setIsBlocked(false);
+      alert(`@${targetUser.username} has been unblocked.`);
+    } catch (err) {
+      alert(err.message || 'Failed to unblock user');
+    }
+  };
+
   const fetchMessages = async () => {
     const { data, error } = await supabase
       .from('messages')
@@ -73,6 +129,11 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
   };
 
   const handleSendMessage = async (textToSend = null) => {
+    if (isBlocked || hasBlockedMe) {
+      alert('Cannot send messages in this chat.');
+      return;
+    }
+
     const text = textToSend || inputMessage.trim();
     const amountVal = parseFloat(sendAmount) || 0;
 
@@ -81,10 +142,18 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
     setLoading(true);
 
     try {
-      setInputMessage('');
-      setSendAmount('');
-      setShowEscrowModal(false);
+      // 1. Handle Escrow GMART Transfer
+      if (amountVal > 0) {
+        const { error: transferError } = await supabase.rpc('transfer_gmart', {
+          sender_id: currentUserId,
+          receiver_id: targetId,
+          transfer_amount: amountVal,
+        });
 
+        if (transferError) throw new Error(transferError.message || 'Transfer failed. Check balance.');
+      }
+
+      // 2. Insert Message
       const { data, error } = await supabase
         .from('messages')
         .insert([
@@ -99,6 +168,10 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
         .select();
 
       if (error) throw error;
+
+      setInputMessage('');
+      setSendAmount('');
+      setShowEscrowModal(false);
 
       if (data && data[0]) {
         setMessages((prev) => {
@@ -115,7 +188,7 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
 
   return (
     <div className="flex flex-col h-full w-full bg-slate-900 overflow-hidden">
-      {/* 1. WHATSAPP TOP HEADER */}
+      {/* 1. TOP HEADER */}
       <div className="bg-slate-800 px-4 py-3 border-b border-slate-700/80 flex items-center justify-between shrink-0 shadow-md z-10">
         <div className="flex items-center gap-3">
           <button onClick={onBack} className="p-1 text-slate-300 hover:text-emerald-400 transition">
@@ -130,9 +203,27 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
             </p>
           </div>
         </div>
+
+        {/* BLOCK / UNBLOCK BUTTON */}
+        {isBlocked ? (
+          <button
+            onClick={handleUnblockUser}
+            className="text-xs bg-slate-700 hover:bg-slate-600 text-amber-400 font-semibold px-3 py-1.5 rounded-xl border border-amber-500/30"
+          >
+            Unblock
+          </button>
+        ) : (
+          <button
+            onClick={handleBlockUser}
+            className="p-2 text-slate-400 hover:text-red-400 transition"
+            title="Block User"
+          >
+            <ShieldOff className="w-5 h-5" />
+          </button>
+        )}
       </div>
 
-      {/* 2. SCROLLABLE MESSAGES AREA */}
+      {/* 2. MESSAGES CANVAS */}
       <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-950/60">
         {/* Action Pills */}
         <div className="flex gap-2 justify-center py-1">
@@ -141,7 +232,8 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
           </button>
           <button 
             onClick={() => setShowEscrowModal(!showEscrowModal)}
-            className="bg-amber-500/10 text-amber-400 border border-amber-500/30 px-3.5 py-1.5 rounded-full text-xs font-semibold"
+            disabled={isBlocked || hasBlockedMe}
+            className="bg-amber-500/10 text-amber-400 border border-amber-500/30 px-3.5 py-1.5 rounded-full text-xs font-semibold disabled:opacity-40"
           >
             Send GMART
           </button>
@@ -163,6 +255,18 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
             >
               Send Escrow
             </button>
+          </div>
+        )}
+
+        {/* Blocked Notifications */}
+        {isBlocked && (
+          <div className="bg-red-500/10 border border-red-500/30 text-red-400 p-3 rounded-2xl text-center text-xs font-semibold">
+            You have blocked @{targetUser.username}. Unblock to send messages.
+          </div>
+        )}
+        {hasBlockedMe && (
+          <div className="bg-slate-800 border border-slate-700 text-slate-400 p-3 rounded-2xl text-center text-xs">
+            You cannot reply to this conversation.
           </div>
         )}
 
@@ -207,19 +311,20 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* 3. PINNED BOTTOM INPUT BAR (Snug at bottom edge with safe area padding) */}
+      {/* 3. BOTTOM INPUT BAR */}
       <div className="px-3 py-2 pb-[calc(env(safe-area-inset-bottom)+8px)] bg-slate-800 border-t border-slate-700/80 flex items-center gap-2 shrink-0 shadow-2xl z-20">
         <input
           type="text"
           value={inputMessage}
+          disabled={isBlocked || hasBlockedMe}
           onChange={(e) => setInputMessage(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-          placeholder={`Message @${targetUser.username}...`}
-          className="flex-1 bg-slate-900 border border-slate-700 rounded-full px-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+          placeholder={isBlocked || hasBlockedMe ? 'Messaging unavailable' : `Message @${targetUser.username}...`}
+          className="flex-1 bg-slate-900 border border-slate-700 rounded-full px-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500 disabled:opacity-50"
         />
         <button
           onClick={() => handleSendMessage()}
-          disabled={loading || !inputMessage.trim()}
+          disabled={loading || !inputMessage.trim() || isBlocked || hasBlockedMe}
           className="bg-emerald-600 hover:bg-emerald-500 text-white p-2.5 rounded-full shadow transition disabled:opacity-50 shrink-0 flex items-center justify-center"
         >
           <Send className="w-4 h-4" />
