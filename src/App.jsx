@@ -147,38 +147,51 @@ export default function App() {
           </div>
         )}
 
-        {activeTab === 'matchmaking' && (
-          <div className="space-y-4">
-            <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-sm">
-              <h2 className="text-sm font-semibold text-emerald-400 mb-1 flex items-center gap-1.5">
-                <Sparkles className="w-4 h-4" /> AI Interest Logger & Matchmaker
-              </h2>
-              <p className="text-xs text-slate-300 mb-3">
-                Log what you do, or search for users with matching skills and interests.
-              </p>
-              <textarea
-                value={logInput}
-                onChange={(e) => setLogInput(e.target.value)}
-                placeholder="E.g. I need someone on Facebook..."
-                className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 h-28 resize-none mb-3"
-              ></textarea>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleLogData}
-                  disabled={loadingAI}
-                  className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs py-3 rounded-lg font-medium transition shadow disabled:opacity-50"
-                >
-                  Log My Data
-                </button>
-                <button
-                  onClick={handleFindLikeminds}
-                  disabled={loadingAI}
-                  className="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs py-3 rounded-lg font-medium transition shadow disabled:opacity-50"
-                >
-                  Find Likeminds
-                </button>
-              </div>
+        {activeTab === 'chat' && (
+          selectedChatUser ? (
+            <ChatRoom
+              currentUserId={session.user.id}
+              targetUser={selectedChatUser}
+              onBack={() => setSelectedChatUser(null)}
+            />
+          ) : (
+            <div className="space-y-3">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">
+                Active Conversations
+              </h3>
+              {matchResults.length > 0 ? (
+                matchResults.map((usr) => (
+                  <div
+                    key={usr.user_id}
+                    onClick={() => startChatWithUser(usr)}
+                    className="bg-slate-800 p-3 rounded-xl border border-slate-700 flex items-center justify-between cursor-pointer hover:border-emerald-500/50 transition"
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center font-bold text-emerald-400 text-xs">
+                        @{usr.username?.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-200">@{usr.username}</h4>
+                        <p className="text-[10px] text-slate-400">Tap to view chat & escrow history</p>
+                      </div>
+                    </div>
+                    <span className="text-[10px] bg-emerald-500/10 text-emerald-400 px-2.5 py-1 rounded-full font-medium">
+                      Open Chat
+                    </span>
+                  </div>
+                ))
+              ) : (
+                <div className="bg-slate-800 p-6 rounded-xl border border-slate-700 text-center py-12">
+                  <MessageSquare className="w-10 h-10 text-emerald-400 mx-auto mb-2 opacity-80" />
+                  <h3 className="text-xs font-semibold text-slate-200">No active chats selected</h3>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Find a likemind on the "AI Match" tab and tap "Chat" to begin messaging live!
+                  </p>
+                </div>
+              )}
             </div>
+          )
+        )}
 
             {/* Matched Likeminds Card */}
             {matchResults.length > 0 && (
