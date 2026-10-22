@@ -1,11 +1,45 @@
-import React, { useState } from 'react';
-import { MessageSquare, Search, User, Wallet, Send, ShieldCheck, Trash2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { supabase } from './supabaseClient';
+import AuthModal from './components/AuthModal';
+import { MessageSquare, Search, User, Wallet, LogOut, Trash2 } from 'lucide-react';
 
 export default function App() {
+  const [session, setSession] = useState(null);
+  const [profile, setProfile] = useState(null);
   const [activeTab, setActiveTab] = useState('matchmaking');
   const [logInput, setLogInput] = useState('');
-  const [balance, setBalance] = useState('0.00');
   const [statusMessage, setStatusMessage] = useState('');
+
+  // 1. Check user session on load
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      if (session) fetchProfile(session.user.id);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+      if (session) fetchProfile(session.user.id);
+      else setProfile(null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  // 2. Fetch profile info (Username, Avatar, GMART Balance)
+  const fetchProfile = async (userId) => {
+    const { data, error } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (data) setProfile(data);
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+  };
 
   const handleLogData = () => {
     if (!logInput.trim()) return;
@@ -28,15 +62,22 @@ export default function App() {
 
   return (
     <div className="flex flex-col w-full min-h-screen bg-slate-900 text-slate-100">
+      {/* If not logged in, show Auth Modal */}
+      {!session && <AuthModal onAuthSuccess={(user) => fetchProfile(user.id)} />}
+
       {/* Header */}
       <header className="p-4 bg-slate-800 border-b border-slate-700 flex justify-between items-center sticky top-0 z-10 shadow-md">
         <div>
           <h1 className="font-bold text-emerald-400 text-base tracking-wide">GMART APP</h1>
-          <p className="text-[11px] text-slate-400">Matchmaking & Escrow</p>
+          <p className="text-[11px] text-slate-400">
+            {profile ? `@${profile.username}` : 'Matchmaking & Escrow'}
+          </p>
         </div>
         <div className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/30 px-3 py-1.5 rounded-full">
           <Wallet className="w-4 h-4 text-amber-400" />
-          <span className="text-xs font-bold text-amber-400">{balance} GMART</span>
+          <span className="text-xs font-bold text-amber-400">
+            {profile ? Number(profile.gmart_balance).toFixed(2) : '0.00'} GMART
+          </span>
         </div>
       </header>
 
@@ -55,20 +96,20 @@ export default function App() {
               <p className="text-xs text-slate-300 mb-3">
                 Log what you do or search for likeminds instantly.
               </p>
-              <textarea 
+              <textarea
                 value={logInput}
                 onChange={(e) => setLogInput(e.target.value)}
                 placeholder="E.g., Electrical installation expert in Port Harcourt..."
                 className="w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 h-28 resize-none mb-3"
               ></textarea>
               <div className="flex gap-2">
-                <button 
+                <button
                   onClick={handleLogData}
                   className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs py-3 rounded-lg font-medium transition shadow"
                 >
                   Log to Database
                 </button>
-                <button 
+                <button
                   onClick={handleFindLikeminds}
                   className="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-200 text-xs py-3 rounded-lg font-medium transition shadow"
                 >
@@ -89,20 +130,34 @@ export default function App() {
           </div>
         )}
 
-        {activeTab === 'profile' && (
+        {activeTab === 'profile' && profile && (
           <div className="space-y-4">
             <div className="bg-slate-800 p-4 rounded-xl border border-slate-700">
-              <h2 className="text-sm font-semibold text-emerald-400 mb-2">My Profile & Data Controls</h2>
+              <h2 className="text-sm font-semibold text-emerald-400 mb-3">My Profile & Account</h2>
               <div className="space-y-3 text-xs text-slate-300">
                 <div className="p-3 bg-slate-900 rounded-lg border border-slate-700 flex justify-between items-center">
-                  <span>Avatar Selection</span>
-                  <span className="text-emerald-400 font-medium">Male Avatar</span>
+                  <span>Username</span>
+                  <span className="text-emerald-400 font-bold">@{profile.username}</span>
                 </div>
                 <div className="p-3 bg-slate-900 rounded-lg border border-slate-700 flex justify-between items-center">
-                  <span>Device IP Protection</span>
-                  <span className="text-slate-400">Tracked & Secured</span>
+                  <span>Avatar</span>
+                  <span className="text-slate-200 font-medium">
+                    {profile.gender_avatar === 'female' ? '👩 Female Avatar' : '👨 Male Avatar'}
+                  </span>
                 </div>
-                <button className="w-full bg-red-500/10 border border-red-500/30 text-red-400 py-2.5 rounded-lg font-medium flex items-center justify-center gap-2 hover:bg-red-500/20 transition">
+                <div className="p-3 bg-slate-900 rounded-lg border border-slate-700 flex justify-between items-center">
+                  <span>Registered Device IP</span>
+                  <span className="text-slate-400">{profile.device_ip || 'Secured'}</span>
+                </div>
+
+                <button
+                  onClick={handleLogout}
+                  className="w-full bg-slate-700 hover:bg-slate-600 text-slate-200 py-2.5 rounded-lg font-medium flex items-center justify-center gap-2 transition mt-4"
+                >
+                  <LogOut className="w-4 h-4" /> Sign Out
+                </button>
+
+                <button className="w-full bg-red-500/10 border border-red-500/30 text-red-400 py-2.5 rounded-lg font-medium flex items-center justify-center gap-2 hover:bg-red-500/20 transition mt-2">
                   <Trash2 className="w-4 h-4" /> Erase Personal Database
                 </button>
               </div>
@@ -113,21 +168,21 @@ export default function App() {
 
       {/* Retro Bottom Navigation Bar */}
       <nav className="fixed bottom-0 left-0 right-0 bg-slate-800 border-t border-slate-700 grid grid-cols-3 p-2 z-20 shadow-lg">
-        <button 
+        <button
           onClick={() => setActiveTab('matchmaking')}
           className={`flex flex-col items-center py-1.5 transition ${activeTab === 'matchmaking' ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}
         >
           <Search className="w-5 h-5" />
           <span className="text-[10px] mt-1">AI Match</span>
         </button>
-        <button 
+        <button
           onClick={() => setActiveTab('chat')}
           className={`flex flex-col items-center py-1.5 transition ${activeTab === 'chat' ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}
         >
           <MessageSquare className="w-5 h-5" />
           <span className="text-[10px] mt-1">Chats</span>
         </button>
-        <button 
+        <button
           onClick={() => setActiveTab('profile')}
           className={`flex flex-col items-center py-1.5 transition ${activeTab === 'profile' ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}
         >
@@ -137,4 +192,4 @@ export default function App() {
       </nav>
     </div>
   );
-          }
+}
