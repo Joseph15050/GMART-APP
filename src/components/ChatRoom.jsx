@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
-import { ArrowLeft, Send, Lock, Smile } from 'lucide-react';
+import { ArrowLeft, Send, Lock } from 'lucide-react';
 
 export default function ChatRoom({ currentUserId, targetUser, onBack }) {
   const [messages, setMessages] = useState([]);
@@ -207,19 +207,16 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* 3. WHATSAPP STYLE BOTTOM INPUT BAR (Snug against bottom with safe area padding) */}
-      <div className="px-3 pt-2 pb-[calc(env(safe-area-inset-bottom)+8px)] bg-slate-800 border-t border-slate-700/80 flex items-center gap-2 shrink-0 shadow-2xl z-20">
-        <div className="flex-1 bg-slate-900 border border-slate-700 rounded-full px-3 py-2 flex items-center gap-2">
-          <Smile className="w-5 h-5 text-slate-400 shrink-0 cursor-pointer hover:text-slate-200" />
-          <input
-            type="text"
-            value={inputMessage}
-            onChange={(e) => setInputMessage(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
-            placeholder={`Message @${targetUser.username}...`}
-            className="w-full bg-transparent border-none text-xs text-slate-100 placeholder-slate-500 focus:outline-none"
-          />
-        </div>
+      {/* 3. PINNED BOTTOM INPUT BAR (Snug at bottom edge with safe area padding) */}
+      <div className="px-3 py-2 pb-[calc(env(safe-area-inset-bottom)+8px)] bg-slate-800 border-t border-slate-700/80 flex items-center gap-2 shrink-0 shadow-2xl z-20">
+        <input
+          type="text"
+          value={inputMessage}
+          onChange={(e) => setInputMessage(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
+          placeholder={`Message @${targetUser.username}...`}
+          className="flex-1 bg-slate-900 border border-slate-700 rounded-full px-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
+        />
         <button
           onClick={() => handleSendMessage()}
           disabled={loading || !inputMessage.trim()}
