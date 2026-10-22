@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { supabase } from '../supabaseClient';
-import { ArrowLeft, Send, Lock, Flame, Wallet, User, Info } from 'lucide-react';
+import { ArrowLeft, Send, Lock, Flame } from 'lucide-react';
 
 export default function ChatRoom({ currentUserId, targetUser, onBack }) {
   const [messages, setMessages] = useState([]);
@@ -111,61 +111,59 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
     }
   };
 
-  const quickReplies = ["How far? 🤙", "I dey o 😂", "Wetin dey happen?", "Where you dey?"];
-
   return (
-    <div className="flex flex-col h-[calc(100vh-120px)] bg-slate-100 dark:bg-slate-900 rounded-3xl overflow-hidden shadow-2xl border border-slate-200 dark:border-slate-800">
-      {/* Top Header */}
-      <div className="bg-white dark:bg-slate-800 px-4 py-3 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between shrink-0">
+    <div className="flex flex-col h-[calc(100vh-140px)] bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-2xl relative">
+      {/* 1. STATIC HEADER */}
+      <div className="bg-slate-800 px-4 py-3 border-b border-slate-700/80 flex items-center justify-between shrink-0 z-10">
         <div className="flex items-center gap-3">
-          <button onClick={onBack} className="p-1 text-slate-600 dark:text-slate-300 hover:text-emerald-500">
+          <button onClick={onBack} className="p-1 text-slate-300 hover:text-emerald-400 transition">
             <ArrowLeft className="w-6 h-6" />
           </button>
           <div>
-            <h2 className="text-base font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1">
+            <h2 className="text-base font-bold text-slate-100 flex items-center gap-1">
               @{targetUser.username}
             </h2>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1">
+            <p className="text-[11px] text-slate-400 flex items-center gap-1">
               <Lock className="w-3 h-3 text-amber-500" /> Private · only you and @{targetUser.username} can see this
             </p>
           </div>
         </div>
       </div>
 
-      {/* Chat Canvas */}
-      <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-50 dark:bg-slate-950">
+      {/* 2. SCROLLABLE CHAT CANVAS */}
+      <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-950/60 scrollbar-thin">
         {/* Streak Card */}
-        <div className="bg-white dark:bg-slate-800 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-between">
+        <div className="bg-slate-800/90 p-3.5 rounded-2xl border border-slate-700/70 shadow-sm flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-full bg-orange-500/10 flex items-center justify-center text-orange-500">
               <Flame className="w-6 h-6 fill-orange-500" />
             </div>
             <div>
-              <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100">Start a streak</h4>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400">
+              <h4 className="text-xs font-bold text-slate-100">Start a streak</h4>
+              <p className="text-[10px] text-slate-400">
                 Both of you do something together on the same day, every day
               </p>
             </div>
           </div>
-          <button className="text-[11px] text-emerald-600 dark:text-emerald-400 font-bold shrink-0">
+          <button className="text-[11px] text-emerald-400 font-bold shrink-0">
             What counts?
           </button>
         </div>
 
-        {/* Quick Action Pills */}
+        {/* Action Pills */}
         <div className="flex gap-2 justify-center">
-          <button className="bg-emerald-50 dark:bg-slate-800 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-slate-700 px-3.5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1">
-            🏠 Profile
+          <button className="bg-slate-800 text-slate-200 border border-slate-700 px-3.5 py-1.5 rounded-full text-xs font-semibold">
+            Profile
           </button>
           <button 
             onClick={() => setShowEscrowModal(!showEscrowModal)}
-            className="bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/50 px-3.5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-1"
+            className="bg-amber-500/10 text-amber-400 border border-amber-500/30 px-3.5 py-1.5 rounded-full text-xs font-semibold"
           >
-            💸 Send GMART
+            Send GMART
           </button>
         </div>
 
-        {/* Escrow Modal / Dropdown */}
+        {/* Escrow Inputs Dropdown */}
         {showEscrowModal && (
           <div className="bg-amber-500/10 border border-amber-500/30 p-3 rounded-2xl flex items-center gap-2">
             <input
@@ -173,18 +171,18 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
               value={sendAmount}
               onChange={(e) => setSendAmount(e.target.value)}
               placeholder="Amount GMART"
-              className="bg-white dark:bg-slate-800 border border-amber-400 rounded-xl px-3 py-1.5 text-xs text-slate-800 dark:text-slate-100 font-bold w-full focus:outline-none"
+              className="bg-slate-800 border border-amber-400/50 rounded-xl px-3 py-1.5 text-xs text-slate-100 font-bold w-full focus:outline-none"
             />
             <button
               onClick={() => handleSendMessage()}
-              className="bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold px-4 py-2 rounded-xl shrink-0"
+              className="bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold px-4 py-2 rounded-xl shrink-0 transition"
             >
               Send Escrow
             </button>
           </div>
         )}
 
-        {/* Messages */}
+        {/* Messages List */}
         {messages.map((msg) => {
           const isMe = msg.sender_id === currentUserId;
           const isEscrow = msg.amount > 0;
@@ -192,10 +190,10 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
           if (isEscrow) {
             return (
               <div key={msg.id} className="flex justify-center my-2">
-                <div className="bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700/50 text-amber-900 dark:text-amber-300 px-4 py-2 rounded-full text-xs font-semibold flex items-center gap-2 shadow-sm">
+                <div className="bg-amber-500/10 border border-amber-500/30 text-amber-400 px-4 py-2 rounded-full text-xs font-semibold flex items-center gap-2 shadow-sm">
                   <span>{isMe ? 'You sent them' : `@${targetUser.username} sent you`}</span>
-                  <span className="bg-amber-400 dark:bg-amber-500 text-slate-950 px-2 py-0.5 rounded-md font-bold">
-                    💸 {msg.amount} GMART
+                  <span className="bg-amber-500 text-slate-950 px-2 py-0.5 rounded-md font-bold">
+                    {msg.amount} GMART
                   </span>
                   <span className="text-[10px] opacity-70">
                     · {new Date(msg.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
@@ -211,7 +209,7 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
                 className={`max-w-[78%] px-4 py-2.5 rounded-2xl text-xs shadow-sm ${
                   isMe
                     ? 'bg-emerald-600 text-white rounded-br-none'
-                    : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-bl-none'
+                    : 'bg-slate-800 text-slate-100 border border-slate-700 rounded-bl-none'
                 }`}
               >
                 <p className="leading-relaxed">{msg.message_text}</p>
@@ -225,28 +223,15 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Quick Reply Chips */}
-      <div className="px-3 py-1.5 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 flex gap-2 overflow-x-auto shrink-0">
-        {quickReplies.map((reply, idx) => (
-          <button
-            key={idx}
-            onClick={() => handleSendMessage(reply)}
-            className="bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-300 hover:bg-emerald-500 hover:text-white text-[11px] px-3 py-1 rounded-full whitespace-nowrap font-medium transition"
-          >
-            {reply}
-          </button>
-        ))}
-      </div>
-
-      {/* Bottom Message Bar */}
-      <div className="p-3 bg-white dark:bg-slate-800 border-t border-slate-200 dark:border-slate-700 flex items-center gap-2 shrink-0">
+      {/* 3. STATIC BOTTOM INPUT BAR */}
+      <div className="p-3 bg-slate-800 border-t border-slate-700/80 flex items-center gap-2 shrink-0 z-10">
         <input
           type="text"
           value={inputMessage}
           onChange={(e) => setInputMessage(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSendMessage()}
           placeholder={`Message @${targetUser.username}...`}
-          className="flex-1 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-full px-4 py-2.5 text-xs text-slate-800 dark:text-slate-100 focus:outline-none focus:border-emerald-500"
+          className="flex-1 bg-slate-900 border border-slate-700 rounded-full px-4 py-2.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
         />
         <button
           onClick={() => handleSendMessage()}
