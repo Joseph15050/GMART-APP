@@ -51,19 +51,40 @@ export default function App() {
     if (data) setProfile(data);
   };
 
-  const fetchRecentConversations = async (userId) => {
-    const { data: msgs } = await supabase
+    const fetchRecentConversations = async (userId) => {
+    // 1. Fetch all messages involving the current user
+    const { data: msgs, error } = await supabase
       .from('messages')
-      .select('*, sender:profiles!messages_sender_id_fkey(username, gender_avatar), receiver:profiles!messages_receiver_id_fkey(username, gender_avatar)')
+      .select('*')
       .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`)
       .order('created_at', { ascending: false });
 
-    if (msgs) {
-      // Group by distinct interlocutor
+    if (error) {
+      console.error('Error fetching messages:', error);
+      return;
+    }
+
+    if (msgs && msgs.length > 0) {
+      // Collect unique user IDs of people we chatted with
+      const otherUserIds = [...new Set(msgs.map(m => m.sender_id === userId ? m.receiver_id : m.sender_id))];
+
+      // 2. Fetch profiles for those users
+      const { data: profilesData } = await supabase
+        .from('profiles')
+        .select('id, username, gender_avatar')
+        .in('id', otherUserIds);
+
+      const profileMap = new Map();
+      if (profilesData) {
+        profilesData.forEach(p => profileMap.set(p.id, p));
+      }
+
+      // 3. Map into distinct conversations
       const map = new Map();
       msgs.forEach((m) => {
         const otherId = m.sender_id === userId ? m.receiver_id : m.sender_id;
-        const otherProfile = m.sender_id === userId ? m.receiver : m.sender;
+        const otherProfile = profileMap.get(otherId);
+
         if (!map.has(otherId) && otherProfile) {
           map.set(otherId, {
             user_id: otherId,
@@ -76,8 +97,11 @@ export default function App() {
         }
       });
       setConversations(Array.from(map.values()));
+    } else {
+      setConversations([]);
     }
   };
+
 
   const handleStartDirectChat = async () => {
     if (!directUsername.trim()) return;
