@@ -18,6 +18,7 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
     fetchMessages();
     markMessagesAsRead();
 
+    // Realtime Listener: Deduplicate by Message ID
     const channel = supabase
       .channel(`public:messages:${currentUserId}_${targetId}`)
       .on(
@@ -29,7 +30,10 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
             (newMsg.sender_id === currentUserId && newMsg.receiver_id === targetId) ||
             (newMsg.sender_id === targetId && newMsg.receiver_id === currentUserId)
           ) {
-            setMessages((prev) => [...prev, newMsg]);
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === newMsg.id)) return prev;
+              return [...prev, newMsg];
+            });
             if (newMsg.receiver_id === currentUserId) {
               markMessagesAsRead();
             }
@@ -78,6 +82,11 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
     setLoading(true);
 
     try {
+      // Clear input instantly for instantaneous UI response
+      setInputMessage('');
+      setSendAmount('');
+      setShowEscrowModal(false);
+
       const { data, error } = await supabase
         .from('messages')
         .insert([
@@ -93,10 +102,7 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
 
       if (error) throw error;
 
-      setInputMessage('');
-      setSendAmount('');
-      setShowEscrowModal(false);
-
+      // Rely on Realtime or safely append if not yet present
       if (data && data[0]) {
         setMessages((prev) => {
           if (prev.some((m) => m.id === data[0].id)) return prev;
@@ -111,9 +117,9 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
   };
 
   return (
-    <div className="flex flex-col h-screen w-full bg-slate-900 relative overflow-hidden">
-      {/* 1. WHATSAPP STYLE TOP HEADER */}
-      <div className="bg-slate-800 px-4 py-3 border-b border-slate-700/80 flex items-center justify-between shrink-0 shadow-md z-10">
+    <div className="flex flex-col h-[100dvh] w-full bg-slate-900 overflow-hidden">
+      {/* 1. TOP HEADER (Fixed Height) */}
+      <div className="bg-slate-800 px-4 py-3 border-b border-slate-700/80 flex items-center justify-between shrink-0 shadow-md">
         <div className="flex items-center gap-3">
           <button onClick={onBack} className="p-1 text-slate-300 hover:text-emerald-400 transition">
             <ArrowLeft className="w-6 h-6" />
@@ -129,10 +135,10 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
         </div>
       </div>
 
-      {/* 2. SCROLLABLE MESSAGES AREA */}
-      <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-950/60 pb-20">
+      {/* 2. CHAT CANVAS (Fills remaining height smoothly) */}
+      <div className="flex-1 p-4 overflow-y-auto space-y-3 bg-slate-950/60">
         {/* Action Pills */}
-        <div className="flex gap-2 justify-center pt-2">
+        <div className="flex gap-2 justify-center py-1">
           <button className="bg-slate-800 text-slate-200 border border-slate-700 px-3.5 py-1.5 rounded-full text-xs font-semibold">
             Profile
           </button>
@@ -144,7 +150,7 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
           </button>
         </div>
 
-        {/* Escrow Modal */}
+        {/* Escrow Inputs */}
         {showEscrowModal && (
           <div className="bg-amber-500/10 border border-amber-500/30 p-3 rounded-2xl flex items-center gap-2">
             <input
@@ -163,7 +169,7 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
           </div>
         )}
 
-        {/* Messages List */}
+        {/* Messages */}
         {messages.map((msg) => {
           const isMe = msg.sender_id === currentUserId;
           const isEscrow = msg.amount > 0;
@@ -187,7 +193,7 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
           return (
             <div key={msg.id} className={`flex ${isMe ? 'justify-end' : 'justify-start'}`}>
               <div
-                className={`max-w-[78%] px-4 py-2.5 rounded-2xl text-xs shadow-sm ${
+                className={`max-w-[80%] px-4 py-2.5 rounded-2xl text-xs shadow-sm ${
                   isMe
                     ? 'bg-emerald-600 text-white rounded-br-none'
                     : 'bg-slate-800 text-slate-100 border border-slate-700 rounded-bl-none'
@@ -204,8 +210,8 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* 3. PINNED BOTTOM INPUT BAR (Zero gap from footer) */}
-      <div className="absolute bottom-0 left-0 right-0 p-3 bg-slate-800 border-t border-slate-700/80 flex items-center gap-2 shadow-2xl z-20">
+      {/* 3. INPUT BAR (Anchored natively at the screen bottom) */}
+      <div className="p-3 bg-slate-800 border-t border-slate-700/80 flex items-center gap-2 shrink-0 shadow-2xl">
         <input
           type="text"
           value={inputMessage}
