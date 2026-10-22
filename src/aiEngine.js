@@ -2,43 +2,37 @@ import { supabase } from './supabaseClient';
 
 const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
 
-// Clean, direct REST call to gemini-embedding-001 with 768-dimension enforcement
 export async function getEmbedding(text) {
   if (!GEMINI_API_KEY) {
-    throw new Error('Gemini API key is missing. Ensure VITE_GEMINI_API_KEY is configured in Vercel.');
+    throw new Error('Gemini API key is not defined in environment variables.');
   }
 
-  const endpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-001:embedContent?key=${GEMINI_API_KEY}`;
+  // Standard text-embedding-004 returns native 768 dimensions
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-001:embedContent?key=${GEMINI_API_KEY}`;
 
-  const response = await fetch(endpoint, {
+  const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: 'models/gemini-embedding-001',
-      content: {
-        parts: [{ text }],
-      },
-      outputDimensionality: 768, // Force 768 output dimensions to match Supabase pgvector column
+      model: 'models/text-embedding-004',
+      content: { parts: [{ text }] }
     }),
   });
 
   const data = await response.json();
 
   if (!response.ok) {
-    console.error('Gemini API Error details:', data);
-    throw new Error(data.error?.message || `Gemini API returned status ${response.status}`);
+    console.error('Gemini Error:', data);
+    throw new Error(data.error?.message || `API error ${response.status}`);
   }
 
   if (data.embedding?.values) {
     return data.embedding.values;
   }
 
-  throw new Error('No embedding vectors returned from Gemini API.');
+  throw new Error('No embedding returned from Gemini API.');
 }
 
-// Log user entry to Supabase user_logs
 export async function logUserInterest(userId, logText) {
   const embedding = await getEmbedding(logText);
 
@@ -54,7 +48,6 @@ export async function logUserInterest(userId, logText) {
   return data;
 }
 
-// Search for matching likeminds using Supabase pgvector cosine similarity
 export async function searchLikeminds(queryText, currentUserId) {
   const queryEmbedding = await getEmbedding(queryText);
 
