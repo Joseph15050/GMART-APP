@@ -62,7 +62,7 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
     }
   };
 
-  const fetchMessages = async () => {
+    const fetchMessages = async () => {
     const { data, error } = await supabase
       .from('messages')
       .select('*')
@@ -73,8 +73,17 @@ export default function ChatRoom({ currentUserId, targetUser, onBack }) {
 
     if (!error && data) {
       setMessages(data);
+
+      // MARK INCOMING MESSAGES AS READ
+      await supabase
+        .from('messages')
+        .update({ is_read: true })
+        .eq('sender_id', targetUser.user_id)
+        .eq('receiver_id', currentUserId)
+        .eq('is_read', false);
     }
   };
+
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
