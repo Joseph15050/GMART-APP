@@ -1,8 +1,8 @@
-import P2PMarket from './components/P2PMarket';
 import React, { useState, useEffect } from 'react';
 import { supabase } from './supabaseClient';
 import AuthModal from './components/AuthModal';
 import ChatRoom from './components/ChatRoom';
+import P2PMarket from './components/P2PMarket';
 import { logUserInterest, searchLikeminds } from './aiEngine';
 import { MessageSquare, Search, User, Wallet, LogOut, Bell, Edit2, Sparkles, Trash2 } from 'lucide-react';
 
@@ -241,6 +241,7 @@ export default function App() {
 
       {/* MAIN CONTAINER */}
       <main className="flex-1 w-full max-w-xl mx-auto overflow-hidden relative flex flex-col">
+        {/* 1. CHAT TAB */}
         {activeTab === 'chat' && (
           selectedChatUser ? (
             <ChatRoom
@@ -355,7 +356,7 @@ export default function App() {
           )
         )}
 
-        {/* AI MATCH & LOGGED DETAILS TAB */}
+        {/* 2. AI MATCH TAB */}
         {activeTab === 'matchmaking' && (
           <div className="p-3 space-y-4 overflow-y-auto pb-24">
             <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 shadow-sm">
@@ -451,14 +452,15 @@ export default function App() {
           </div>
         )}
 
+        {/* 3. P2P MARKET TAB */}
         {activeTab === 'p2p' && (
-  <P2PMarket
-    currentUserId={session.user.id}
-    onBalanceChange={() => fetchProfile(session.user.id)} />
+          <P2PMarket
+            currentUserId={session.user.id}
+            onBalanceChange={() => fetchProfile(session.user.id)}
+          />
         )}
-    
-        
-        {/* PROFILE TAB */}
+
+        {/* 4. PROFILE TAB */}
         {activeTab === 'profile' && profile && (
           <div className="p-3 bg-slate-800 p-4 rounded-2xl border border-slate-700 text-xs space-y-3 m-3">
             <h2 className="text-sm font-bold text-emerald-400">Account</h2>
@@ -476,45 +478,42 @@ export default function App() {
         )}
       </main>
 
-{/* BOTTOM NAV BAR */}
-{!inChatRoom && (
-  <div className="fixed bottom-0 left-0 right-0 z-20 pointer-events-none">
-    <nav className="max-w-xl mx-auto pointer-events-auto bg-slate-800 border-t border-slate-700 grid grid-cols-4 py-2 shadow-lg">
-      <button
-        onClick={() => setActiveTab('matchmaking')}
-        className={`flex flex-col items-center py-1.5 ${activeTab === 'matchmaking' ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}
-      >
-        <Search className="w-5 h-5" />
-        <span className="text-[10px] mt-1">AI Match</span>
-      </button>
-      
-      <button
-        onClick={() => setActiveTab('chat')}
-        className={`flex flex-col items-center py-1.5 ${activeTab === 'chat' ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}
-      >
-        <MessageSquare className="w-5 h-5" />
-        <span className="text-[10px] mt-1">Chats</span>
-      </button>
-      
-      <button
-        onClick={() => setActiveTab('p2p')}
-        className={`flex flex-col items-center py-1.5 ${activeTab === 'p2p' ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}
-      >
-        <Wallet className="w-5 h-5" />
-        <span className="text-[10px] mt-1">P2P</span>
-      </button>
-      
-      <button
-        onClick={() => setActiveTab('profile')}
-        className={`flex flex-col items-center py-1.5 ${activeTab === 'profile' ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}
-      >
-        <User className="w-5 h-5" />
-        <span className="text-[10px] mt-1">Profile</span>
-      </button>
-    </nav>
-  </div>
-)}
-    </div>  {/* <-- Closes the main flex-col wrapper div */}
+      {/* BOTTOM NAV BAR (PURE FLEX ROW TO PREVENT WRAPPING) */}
+      {!inChatRoom && (
+        <nav className="fixed bottom-0 left-0 right-0 bg-slate-800 border-t border-slate-700 flex flex-row items-center justify-between px-2 py-2 z-20 shadow-lg shrink-0">
+          <button
+            onClick={() => setActiveTab('matchmaking')}
+            className={`flex-1 flex flex-col items-center py-1.5 ${activeTab === 'matchmaking' ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}
+          >
+            <Search className="w-5 h-5" />
+            <span className="text-[10px] mt-1">AI Match</span>
+          </button>
+          
+          <button
+            onClick={() => setActiveTab('chat')}
+            className={`flex-1 flex flex-col items-center py-1.5 ${activeTab === 'chat' ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}
+          >
+            <MessageSquare className="w-5 h-5" />
+            <span className="text-[10px] mt-1">Chats</span>
+          </button>
+          
+          <button
+            onClick={() => setActiveTab('p2p')}
+            className={`flex-1 flex flex-col items-center py-1.5 ${activeTab === 'p2p' ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}
+          >
+            <Wallet className="w-5 h-5" />
+            <span className="text-[10px] mt-1">P2P</span>
+          </button>
+          
+          <button
+            onClick={() => setActiveTab('profile')}
+            className={`flex-1 flex flex-col items-center py-1.5 ${activeTab === 'profile' ? 'text-emerald-400 font-bold' : 'text-slate-400'}`}
+          >
+            <User className="w-5 h-5" />
+            <span className="text-[10px] mt-1">Profile</span>
+          </button>
+        </nav>
+      )}
+    </div>
   );
-}       {/* <-- Closes the App function */}
-
+}
