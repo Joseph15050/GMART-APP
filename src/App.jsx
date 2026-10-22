@@ -452,11 +452,15 @@ export default function App() {
           </div>
         )}
 
-        {/* 3. P2P MARKET TAB */}
+       {/* 3. P2P MARKET TAB */}
         {activeTab === 'p2p' && (
           <P2PMarket
             currentUserId={session.user.id}
             onBalanceChange={() => fetchProfile(session.user.id)}
+            onSelectChatUser={(user) => {
+              setSelectedChatUser(user);
+              setActiveTab('chat');
+            }}
           />
         )}
 
