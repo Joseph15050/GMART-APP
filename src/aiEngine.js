@@ -8,7 +8,7 @@ export async function getEmbedding(text) {
   }
 
   // Standard text-embedding-004 returns native 768 dimensions
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-001:embedContent?key=${GEMINI_API_KEY}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${GEMINI_API_KEY}`;
 
   const response = await fetch(url, {
     method: 'POST',
