@@ -4,11 +4,11 @@ const GEMINI_API_KEY = import.meta.env.VITE_GEMINI_API_KEY || '';
 
 export async function getEmbedding(text) {
   if (!GEMINI_API_KEY) {
-    throw new Error('Gemini API key is not defined in environment variables.');
+    throw new Error('Gemini API key is not defined in Vercel environment variables.');
   }
 
-  // Use text-embedding-004 which natively supports output_dimensionality
-  const url = `https://googleapis.com{GEMINI_API_KEY}`;
+  // text-embedding-004 natively outputs exact 768 dimensions matching Supabase pgvector schema
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=${GEMINI_API_KEY}`;
 
   const response = await fetch(url, {
     method: 'POST',
@@ -16,9 +16,8 @@ export async function getEmbedding(text) {
     body: JSON.stringify({
       model: 'models/text-embedding-004',
       content: {
-        parts: [{ text: text }]
-      },
-      output_dimensionality: 768 // Supported by text-embedding-004
+        parts: [{ text }]
+      }
     }),
   });
 
@@ -29,7 +28,6 @@ export async function getEmbedding(text) {
     throw new Error(data.error?.message || `API error ${response.status}`);
   }
 
-  // Gemini returns the array inside data.embedding.values
   if (data.embedding?.values) {
     return data.embedding.values;
   }
@@ -44,8 +42,7 @@ export async function logUserInterest(userId, logText) {
     {
       user_id: userId,
       log_text: logText,
-      // If Supabase throws a database error here, wrap it: JSON.stringify(embedding)
-      embedding: embedding, 
+      embedding: embedding,
     },
   ]);
 
@@ -57,8 +54,7 @@ export async function searchLikeminds(queryText, currentUserId) {
   const queryEmbedding = await getEmbedding(queryText);
 
   const { data, error } = await supabase.rpc('match_user_logs', {
-    // Ensure this matches the argument data type expected by your Postgres function (usually vector)
-    query_embedding: queryEmbedding, 
+    query_embedding: queryEmbedding,
     match_threshold: 0.10,
     match_count: 10,
     searching_user_id: currentUserId,
