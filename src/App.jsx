@@ -135,7 +135,7 @@ export default function App() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 p-4 pb-24 overflow-y-auto max-w-2xl mx-auto w-full">
+      <main className="flex-1 p-3 max-w-2xl mx-auto w-full overflow-hidden flex flex-col">
         {statusMessage && activeTab === 'matchmaking' && (
           <div className={`mb-4 p-3 rounded-lg text-xs flex items-center gap-2 ${
             statusType === 'success' 
