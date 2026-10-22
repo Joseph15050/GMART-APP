@@ -68,26 +68,15 @@ export default function App() {
       .subscribe();
   };
 
-    const fetchUserLogs = async (userId) => {
-    // Tries fetching from user_interests or user_logs
-    let { data, error } = await supabase
-      .from('user_interests')
+  const fetchUserLogs = async (userId) => {
+    const { data } = await supabase
+      .from('user_logs')
       .select('*')
       .eq('user_id', userId)
       .order('created_at', { ascending: false });
 
-    if (error || !data) {
-      const fallback = await supabase
-        .from('user_logs')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false });
-      data = fallback.data;
-    }
-
     if (data) setUserLogs(data);
   };
-
 
   const fetchRecentConversations = async (userId) => {
     const { data: msgs, error } = await supabase
@@ -132,6 +121,23 @@ export default function App() {
     }
   };
 
+  const handleClearAllChats = async () => {
+    if (!window.confirm('Are you sure you want to delete all your chat messages?')) return;
+
+    const userId = session.user.id;
+    const { error } = await supabase
+      .from('messages')
+      .delete()
+      .or(`sender_id.eq.${userId},receiver_id.eq.${userId}`);
+
+    if (!error) {
+      setConversations([]);
+      alert('All chats cleared successfully.');
+    } else {
+      alert(error.message || 'Failed to clear chats.');
+    }
+  };
+
   const handleLogData = async () => {
     if (!logInput.trim()) return;
     setLoadingAI(true);
@@ -141,7 +147,7 @@ export default function App() {
       await logUserInterest(session.user.id, logInput.trim());
       setStatusMessage('Log saved!');
       setLogInput('');
-      fetchUserLogs(session.user.id);
+      await fetchUserLogs(session.user.id);
     } catch (err) {
       setStatusMessage(err.message || 'Failed to save log.');
     } finally {
@@ -149,22 +155,22 @@ export default function App() {
     }
   };
 
-    const handleDeleteSingleLog = async (logId) => {
-    const { error: err1 } = await supabase.from('user_interests').delete().eq('id', logId);
-    if (err1) {
-      await supabase.from('user_logs').delete().eq('id', logId);
+  const handleDeleteSingleLog = async (logId) => {
+    const { error } = await supabase.from('user_logs').delete().eq('id', logId);
+    if (!error) {
+      setUserLogs((prev) => prev.filter((l) => l.id !== logId));
     }
-    setUserLogs((prev) => prev.filter((l) => l.id !== logId && l.log_id !== logId));
   };
 
   const handleDeleteAllLogs = async () => {
-    if (!window.confirm('Delete all your logged interests?')) return;
-    await supabase.from('user_interests').delete().eq('user_id', session.user.id);
-    await supabase.from('user_logs').delete().eq('user_id', session.user.id);
-    setUserLogs([]);
+    if (!window.confirm('Delete all your logged details?')) return;
+    const { error } = await supabase.from('user_logs').delete().eq('user_id', session.user.id);
+    if (!error) {
+      setUserLogs([]);
+    }
   };
 
-    const handleFindLikeminds = async () => {
+  const handleFindLikeminds = async () => {
     if (!logInput.trim()) return;
     setLoadingAI(true);
     setStatusMessage('Searching AI vector database...');
@@ -172,7 +178,7 @@ export default function App() {
     try {
       const rawResults = await searchLikeminds(logInput.trim(), session.user.id);
       
-      // Keep only 1 top-matching result per unique user
+      // Deduplicate results by user_id
       const uniqueUsersMap = new Map();
       rawResults.forEach((match) => {
         if (!uniqueUsersMap.has(match.user_id)) {
@@ -194,7 +200,6 @@ export default function App() {
       setLoadingAI(false);
     }
   };
-
 
   const handleStartDirectChat = async () => {
     if (!directUsername.trim()) return;
@@ -268,8 +273,17 @@ export default function App() {
             <div className="p-3 space-y-4 overflow-y-auto pb-24">
               <div className="flex justify-between items-center">
                 <h2 className="text-xl font-black text-slate-100">Messages</h2>
-                <div className="relative">
-                  <button className="p-2 bg-slate-800 rounded-full border border-slate-700 text-slate-300">
+                <div className="flex items-center gap-2">
+                  {conversations.length > 0 && (
+                    <button
+                      onClick={handleClearAllChats}
+                      className="text-xs bg-red-500/10 border border-red-500/30 text-red-400 hover:bg-red-500/20 px-2.5 py-1 rounded-xl flex items-center gap-1 font-semibold transition"
+                      title="Clear All Conversations"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" /> Clear All
+                    </button>
+                  )}
+                  <button className="p-2 bg-slate-800 rounded-full border border-slate-700 text-slate-300 relative">
                     <Bell className="w-5 h-5" />
                     {conversations.some((c) => c.is_unread) && (
                       <span className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-full border-2 border-slate-900"></span>
@@ -417,14 +431,14 @@ export default function App() {
                 <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                   {userLogs.map((log) => (
                     <div
-                      key={log.id || log.log_id}
+                      key={log.id}
                       className="bg-slate-900/80 p-2.5 rounded-lg border border-slate-700/60 flex justify-between items-center text-xs"
                     >
                       <p className="text-slate-300 text-[11px] flex-1 pr-2">
                         {log.log_text || log.content || log.interest_text}
                       </p>
                       <button
-                        onClick={() => handleDeleteSingleLog(log.id || log.log_id)}
+                        onClick={() => handleDeleteSingleLog(log.id)}
                         className="text-slate-500 hover:text-red-400 transition p-1 shrink-0"
                         title="Delete log"
                       >
@@ -438,10 +452,9 @@ export default function App() {
               )}
             </div>
 
-
             {/* MATCH RESULTS */}
             {matchResults.map((match) => (
-              <div key={match.log_id} className="bg-slate-800 p-3 rounded-xl border border-slate-700 flex justify-between items-center">
+              <div key={match.log_id || match.user_id} className="bg-slate-800 p-3 rounded-xl border border-slate-700 flex justify-between items-center">
                 <div>
                   <span className="text-xs font-bold text-emerald-400">@{match.username}</span>
                   <p className="text-xs text-slate-300 mt-1">"{match.log_text}"</p>
